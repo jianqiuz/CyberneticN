@@ -1,7 +1,7 @@
 ---
 title: "Nsystem"
 author: "Jianqiu Zheng"
-date: "4/14/2021"
+date: "4/14/2020"
 output: html_document
 ---
 ###full model with OM mineralization
