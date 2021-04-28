@@ -1,0 +1,364 @@
+---
+title: "Km_test"
+author: "Jianqiu Zheng"
+date: "3/5/2021"
+output: html_document
+---
+##rate in mM per hour
+##km values in mM (10uM)
+```{r kin}
+library(FME)
+
+pars<- list (ax1=2.3, ax2=1.5)
+
+solveNR <- function(pars, times=seq(0,30, by=0.05)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+      r1<- 0.1* Nat/(Nat+0.01) * CHO/(CHO+0.01)  #denitrification     
+      r2<- 0.085* Nat/(Nat+0.01) * CHO/(CHO+0.01)  #DNRA
+      u1<-r1/(r1+r2)
+      u2<-r2/(r1+r2)
+      
+      dNat <--ax1*r1*u1*BM1-ax2*r2*u2*BM2  #stoichiometry from Berg
+      dN2 <- +1.0*r1*u1*BM1
+      dAmm <- +1.33*r2*u2*BM2
+      dCHO <--2.1*r1*u1*BM1-2.1*r2*u2*BM2
+
+      dBM1 <- (r1*u1)*BM1
+      dBM2 <- (r2*u2)*BM2
+
+      dNat1 <-ax1*r1*u1*BM1
+      dNat2 <-ax2*r2*u2*BM2 
+    return(list(c(dNat,dAmm,dN2, dCHO,dBM1, dBM2, dNat1,dNat2),u1,u2))
+      })
+  }
+times=seq(0,30, by=0.05)
+state<-c(Nat=11.8,Amm=0, N2=0, CHO=13.7, BM1=2, BM2=2, Nat1=0, Nat2=0)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:11])
+}
+
+output<-solveNR(pars)  
+##plotting
+#pdf("BatchA.pdf", width=4, height=3.5)
+plot(output$time,output$Nat, type = "l", main="BatchA",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,lty=1,col="#7f3b08", xlim=c(0,50), ylim=c(0,20))
+lines(output$time,output$Amm, lwd=3, lty=1, col="#e08214")
+lines(output$time,output$N2, lwd=3, lty=1, col="#542788")
+lines(output$time,output$CHO, lwd=3, lty=2, col="black")
+legend("topright", c("NO3","NH4","N2","Acetate"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#542788","black"))
+output[601, ]
+#dev.off()
+
+
+```
+
+
+
+#global sensitivity analysis of gmax and kd
+```{r sen}
+
+library(FME)
+parRanges <- data.frame(min = c(1.15,0.75), max = c(3.45, 2.25))
+rownames(parRanges) <- c("ax1","ax2")
+parRanges
+
+#get sensitivity of vmax
+tout <- 0:100  # run the model for 100 times (num)
+
+print(system.time(sR <- sensRange(func = solveNR, parms = pars, dist ="grid", sensvar = c("Nat1","Nat2"), parRange = parRanges[2,], num = 100)))
+
+head(summary(sR))
+
+# plotting the result
+summ.sR <- summary(sR)
+#pdf("Sen_ka0.01-1.pdf", width=6, height=5)
+par(mfrow=c(2, 3))
+#plot(summ.sR, xlab = "Time (h)", ylab = "mM",legpos = "topright", mfrow = NULL)
+plot(summ.sR, xlab = "Time (h)", ylab = "mM", mfrow = NULL,quant = TRUE, col = c("#fee0b6", "#b35806"), legpos = "topright")
+mtext(outer = TRUE, line = 0.5, side = 3, "Sensitivity to Km_OC2 (0.01-1mM)", cex = 1.25)
+par(mfrow = c(1, 1))
+#dev.off()
+# senstivity analysis of both parameters
+#Sens2 <- summary(sensRange(func = solveDnra, parms = pars, dist = "latin", sensvar = "Nat", parRange = parRanges, num = 100))
+
+#plot(Sens2, main = "Sensitivity of vamx and kd", xlab = "time, hour",ylab = "mM")
+
+```
+
+
+
+###fitting the rates
+```{r data}
+
+
+Data<-read.csv("batchG.csv",header=TRUE)
+
+Objective <- function(x, parset = names(x)) {
+ pars[parset] <- x
+ tout <- seq(0, 50, by = 0.05) ## output times
+ out <- solveNR(pars, tout)
+ return(modCost(model = out, obs = Data))## Model cost
+}
+
+
+#parameters are constrained to be >0
+print(system.time(Fit <- modFit(p = c(vmax1=0.1,vmax2=0.1),
+ f = Objective, lower = c(0.0,0.0))))
+
+summary(Fit)
+
+```
+
+# local sensitivity-the effect of a parameter value in a very small region near its nominal value is estimated
+```{r local}
+pars[c("vmax1","vmax2")]<-Fit$par
+
+pars<- list (vmax1=0.2,vmax2=0.2)
+
+SnsNR<- sensFun(func = solveNR(), parms = pars, sensvar = "Nat", varscale = 1)
+head(SnsNR)
+plot(SnsNR)
+
+summary(SnsNR)
+
+# sensitivity analysis can also be performed on several variables
+summary(sensFun(solveNR, pars, varscale = 1), var = TRUE)
+
+
+#bivarate sensitivity--the pairwise relationships
+cor(SnsNRt[ ,-(1:2)])
+pairs(SnsNR)
+
+```
+#Function modCRL runs a Monte Carlo simulation, outputting single variables.
+```{r MMC}
+
+pars[c("vmax1","vmax2")]<-Fit$par
+
+sF <- function (pars) {out <- solveNR(pars)
+ return(out[nrow(out), 2:4])}
+#what-if scenarios, calculate the final concentration of bacteria and substrate as a function of the maximal growth rate
+CRL <- modCRL(func = sF, parms = pars, parRange = parRanges[1,])
+plot(CRL)
+
+# how parameter uncertainties propagate
+# what does the data mean?
+CRL2 <- modCRL(func = sF, parms = pars, parMean = c(vmax2=2, kd2=1),
+ parCovar = matrix(nr = 2, data = c(0.02, 0.02, 0.02, 0.05)),
+ dist = "norm", sensvar = "Nit", num = 150)
+pairs(CRL2)
+
+
+#Multivariate sensitivity analysis
+#calculate the collinearity or identifiiability of sets of parameters
+Coll <- collin(SnsBact)
+print(Coll)
+Coll [Coll[,"collinearity"] < 20 & Coll[ ,"N"] == 4, ]
+collin(SnsBact, parset = 1:2)
+
+```
+
+
+```{r plot}
+
+pars[c("vmax1","vmax2")]<-Fit$par
+output<-solveNR(pars) 
+
+#new<-output[1001,]
+#data<-rbind(data, new)
+
+##plotting
+#pdf("BatchA4.pdf", width=4, height=3.5)
+plot(output$time,output$Nat, type = "l", main="BatchG4",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,lty=1,col="#7f3b08", xlim=c(0,50), ylim=c(0,20))
+lines(output$time,output$Amm, lwd=3, lty=1, col="#e08214")
+lines(output$time,output$N2, lwd=3, lty=1, col="#542788")
+lines(output$time,output$CHO, lwd=3, lty=2, col="black")
+legend("topright", c("NO3","NH4","N2","Acetate"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#542788","black"))
+
+#dev.off()
+
+#pdf("BatchA4biomass.pdf", width=4, height=3.5)
+plot(output$time,output$BM1, type = "l", main="Biomass",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,lty=1,col="#7f3b08", xlim=c(0,50), ylim=c(0,10))
+lines(output$time,output$BM2, lwd=3, lty=1, col="#e08214")
+legend("topright", c("BM1","BM2"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214"))
+
+#dev.off()
+
+#pdf("BatchA4rates.pdf", width=4, height=3.5)
+plot(output$time,output$X7, type = "l", main="Batch_rate ratio",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,lty=1,col="#7f3b08", xlim=c(0,50), ylim=c(0,1))
+lines(output$time,output$X8, lwd=3, lty=1, col="#e08214")
+legend("topright", c("BM1","BM2"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214"))
+
+#dev.off()
+
+output[400, ]
+
+```
+
+
+
+#plot results summary
+```{r plot}
+Data<-read.csv("biomass.csv",header=TRUE)
+Bio<-read.csv("biomass_measured.csv",header=TRUE)
+Label<-read.csv("biomass_label.csv",header=TRUE)
+control<-read.csv("control.csv",header=TRUE)
+library(ggplot2)
+library(reshape)
+
+p1<-ggplot(Data, aes(x=Resouce, y=value))+geom_bar(aes(fill=type),stat="identity")+ scale_x_continuous(limits=c(0.5, 2.0))+geom_line(data=Bio, aes(x=Resouce, y=Measured), linetype="dashed")+geom_point(data=Bio, aes(x=Resouce, y=Measured))+scale_fill_manual(values=c('#b2abd2','#e08214'))+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("Biomass_pred.pdf", width=4.5, height=3)
+p1
+dev.off()
+
+
+p2<-ggplot(Label, aes(x=Resouce, y=value))+geom_point()+ geom_hline(yintercept=10,linetype="dashed")+scale_fill_manual(values=c('#b2abd2','#e08214'))+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("Biomass_label.pdf", width=4.5, height=3)
+p2
+dev.off()
+
+
+species<-read.csv("speces.csv",header=TRUE)
+p1<-ggplot(species, aes(x=Ratio, y=value, fill=source, shape=species))+geom_point(size=5)+scale_fill_manual(values=c('#b2abd2','#e08214'))+scale_shape_manual(values = c(21, 24, 25) )+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+
+flux<-read.csv("flux.csv",header=TRUE)
+pdf("flux_pred.pdf", width=4, height=4)
+plot(flux$Ratio,flux$Ac_mod, type = "l",xlab = "Ac/N ratio", ylab = "Concentration (mM)", lwd=2,lty=2,col="#e08214", xlim=c(0.5,2), ylim=c(0,10))
+points(flux$Ratio,flux$Ac_obv,pch=19, col="#e08214")
+points(flux$Ratio,flux$Ac_mod,pch=1,lwd=2,  col="#e08214")
+lines(flux$Ratio,flux$Amm_mod, lwd=2,lty=2, col="#fdb863")
+points(flux$Ratio,flux$Amm_mod, pch=1,lwd=2,   col="#fdb863")
+points(flux$Ratio,flux$Amm_obv, pch=19, col="#fdb863")
+lines(flux$Ratio,flux$Nat_obv,lwd=2,lty=2, col="#8073ac" )
+points(flux$Ratio,flux$Nat_obv,pch=19, col="#8073ac" )
+points(flux$Ratio,flux$Nat_mod, pch=1,lwd=2,  col="#8073ac" )
+legend("topleft", c("Ac","NH4","NO3"),lwd=3, lty=c(2,2,2),pch=21, col=c("#e08214","#fdb863","#8073ac"))
+
+dev.off()
+
+
+
+p4<-ggplot(control, aes(x=Resouce, y=value))+geom_bar(aes(fill=type),stat="identity",position=position_dodge())+ scale_x_discrete()+scale_fill_manual(values=c('#b2abd2','#e08214'))+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("NRed_fraction.pdf", width=4.5, height=3)
+p4
+dev.off()
+
+```
+
+
+
+```{r plot}
+
+Bio<-read.csv("bio_ratio.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+scaleFUN <- function(x) sprintf("%.1f", x)
+p1<-ggplot(Bio, aes(x=Ratio, y=value, col=variable))+scale_x_continuous(limits=c(0.5, 2.0))+scale_y_continuous(limits=c(0,1), breaks=c(0,0.5,1))+geom_line(linetype="dashed", size=1.6)+scale_color_manual(values=c('#b2abd2','#e08214'))+geom_vline(xintercept=0.91, linetype="dotted")+geom_vline(xintercept=1.4, linetype="dotted")+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("Biomass_stiochio.pdf", width=5.5, height=2.5)
+p1
+dev.off()
+```
+
+
+
+```{r plot}
+bio<-read.csv("biomass_kNsens.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+
+p1<-ggplot(bio, aes(x=batch, y=value, color=species, fill=species))+geom_bar(position=position_dodge(),stat="identity")+scale_y_continuous(limits=c(0,9), breaks=c(0,2,4,6,8))+ scale_color_manual(values=c('#b2abd2','#b2abd2','#e08214','#e08214'))+ scale_fill_manual(values=c('white','#b2abd2','white','#e08214'))+ theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("Biomass_kNsens.pdf", width=6, height=3)
+p1
+dev.off()
+
+
+
+
+```
+
+
+###
+```{r practice}
+install.packages("forwards", repos = "http://cran.us.r-project.org")
+useR2016 = forwards::useR2016
+library(ggplot2)
+library(tidyverse)
+
+#get rid of the 'NA' data in the dataset
+noNuseR2016 <- useR2016 %>% dplyr::filter(Q3 != 'NA'&Q11 != 'NA')
+
+#plot the graph without NA
+ggplot(noNuseR2016) + 
+ geom_bar(aes(x = Q11, fill = Q3), position = 'fill')+
+  ylab('Proportion')+
+  xlab('Years')+
+  ggtitle('Years of using R according to Ages')+
+  coord_flip()
+
+#plot the graph of data without 'NA'
+ggplot(noNuseR2016)+
+  #"fill" sets different colors according to Q11
+  geom_bar(aes(x = Q11, fill = Q3), position = 'fill', width = 0.5)+
+  facet_grid(noNuseR2016$Q2)+
+  coord_flip()+
+  ylab('Proportion')+
+  xlab('Age')+
+  ggtitle('Proportions of years using R according to ages and genders')
+```
+
+
+```{r plot}
+
+bio<-read.csv("ka1_sens_t1.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+
+p1<-ggplot()+geom_bar(data=bio[15:28,], aes(x=batch, y=value, fill=variable),position="stack", stat="identity")+scale_y_continuous(limits=c(-1,1), breaks=c(-1,0,1))+ scale_fill_manual(values=c('#8073ac','#fdb863',"black"))+ coord_flip() +theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("Ka1_mid.pdf", width=3.5, height=2.5)
+p1
+dev.off()
+```
+
+```{r plot}
+
+bio<-read.csv("kOC_sens.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+
+p1<-ggplot()+geom_bar(data=bio[1:14,], aes(x=batch, y=value,color=variable, fill=variable),position="stack", stat="identity",size=1)+scale_y_continuous(limits=c(-1,1), breaks=c(-1,0,1))+ scale_color_manual(values=c('#8073ac','#fdb863',"black"))+
+scale_fill_manual(values=c('white','white',"white"))+coord_flip() +theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("KOC_ref.pdf", width=3.5, height=3)#p1
+p1
+dev.off()
+```
+
+
+```{r plot}
+
+bio<-read.csv("vmax.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+
+p1<-ggplot(bio, aes(x=ratio, y=value, group=variable, color=variable))+ geom_line()+geom_point()+scale_y_continuous(limits=c(0,0.2))+ geom_errorbar(aes(ymin=value-err, ymax=value+err),width=.2,position=position_dodge(0.05))+ scale_color_manual(values=c('#8073ac','#fdb863'))+
+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("vmax.pdf", width=4.5, height=3)#p1
+p1
+dev.off()
+```
