@@ -1,6 +1,7 @@
 # cyberneticN
 
-This repository is archived for manuscript **"A cybernetic approach for modeling dynamic nitrogen biogeochemical transformations".** There major modeling components are included: 
+This repository is archived for manuscript **"The cybernetic approach to modeling dynamic regulation of nitrogen biogeochemical transformations 
+".** There major modeling components are included: 
 
 * Dual substrate competition between Denitrification and DNRA
 
