@@ -1,0 +1,17 @@
+﻿batch,value,variable
+H,100,min
+G,0.536,min
+F,3.57,min
+E,10,min
+D,4.69,min
+C,6.25,min
+B,1,min
+A,3250,min
+H,1600,max
+G,169.464,max
+F,196.43,max
+E,615,max
+D,578.1,max
+C,1187.5,max
+B,99,max
+A,550,max

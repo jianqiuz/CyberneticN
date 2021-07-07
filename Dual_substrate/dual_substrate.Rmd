@@ -1,0 +1,260 @@
+---
+title: "dual_substrate_competition"
+author: "Jianqiu Zheng"
+date: "3/5/2021"
+output: html_document
+---
+##This is the cybernetic model for dualsubstrate competion between denitrification and DNRA (based on van den Berg et al. Front. Microbiol. 2016)
+##rate in mM per hour; km values in mM (10uM)
+```{r kin}
+library(FME)
+
+pars<- list (vmax1=0.2, vmax2=0.1)
+
+solveNR <- function(pars, times=seq(0,30, by=0.05)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+      r1<- vmax1* Nat/(Nat+0.01) * CHO/(CHO+0.01)  #denitrification     
+      r2<- vmax2* Nat/(Nat+0.01) * CHO/(CHO+0.01)  #DNRA
+      u1<-r1/(r1+r2)
+      u2<-r2/(r1+r2)
+      
+      dNat <--2.32*r1*u1*BM1-1.53*r2*u2*BM2  #stoichiometry from van den Berg
+      dN2 <- +1.06*r1*u1*BM1
+      dAmm <- +1.33*r2*u2*BM2
+      dCHO <--2.05*r1*u1*BM1-2.05*r2*u2*BM2
+
+      dBM1 <- (r1*u1)*BM1
+      dBM2 <- (r2*u2)*BM2
+
+    return(list(c(dNat,dAmm,dN2, dCHO,dBM1, dBM2),u1,u2))
+      })
+  }
+times=seq(0,30, by=0.05)
+state<-c(Nat=11.8,Amm=0, N2=0, CHO=22.1, BM1=2, BM2=2)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:9])
+}
+
+output<-solveNR(pars)  
+##plotting
+#pdf("BatchA.pdf", width=4, height=3.5)
+plot(output$time,output$Nat, type = "l", main="BatchA",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,lty=1,col="#7f3b08", xlim=c(0,50), ylim=c(0,20))
+lines(output$time,output$Amm, lwd=3, lty=1, col="#e08214")
+lines(output$time,output$N2, lwd=3, lty=1, col="#542788")
+lines(output$time,output$CHO, lwd=3, lty=2, col="black")
+legend("topright", c("NO3","NH4","N2","Acetate"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#542788","black"))
+output[601, ]
+#dev.off()
+
+
+```
+
+###fitting the rates
+```{r data}
+
+
+Data<-read.csv("batchG.csv",header=TRUE)
+
+Objective <- function(x, parset = names(x)) {
+ pars[parset] <- x
+ tout <- seq(0, 50, by = 0.05) ## output times
+ out <- solveNR(pars, tout)
+ return(modCost(model = out, obs = Data))## Model cost
+}
+
+
+#parameters are constrained to be >0
+print(system.time(Fit <- modFit(p = c(vmax1=0.1,vmax2=0.1),
+ f = Objective, lower = c(0.0,0.0))))
+
+summary(Fit)
+
+```
+##checking fitted parameters
+```{r plot}
+
+pars[c("vmax1","vmax2")]<-Fit$par
+output<-solveNR(pars) 
+
+#new<-output[1001,]
+#data<-rbind(data, new)
+
+##plotting
+#pdf("BatchA4.pdf", width=4, height=3.5)
+plot(output$time,output$Nat, type = "l", main="BatchG4",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,lty=1,col="#7f3b08", xlim=c(0,50), ylim=c(0,20))
+lines(output$time,output$Amm, lwd=3, lty=1, col="#e08214")
+lines(output$time,output$N2, lwd=3, lty=1, col="#542788")
+lines(output$time,output$CHO, lwd=3, lty=2, col="black")
+legend("topright", c("NO3","NH4","N2","Acetate"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#542788","black"))
+
+#dev.off()
+
+#pdf("BatchA4biomass.pdf", width=4, height=3.5)
+plot(output$time,output$BM1, type = "l", main="Biomass",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,lty=1,col="#7f3b08", xlim=c(0,50), ylim=c(0,10))
+lines(output$time,output$BM2, lwd=3, lty=1, col="#e08214")
+legend("topright", c("BM1","BM2"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214"))
+
+#dev.off()
+
+#pdf("BatchA4rates.pdf", width=4, height=3.5)
+plot(output$time,output$X7, type = "l", main="Batch_rate ratio",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,lty=1,col="#7f3b08", xlim=c(0,50), ylim=c(0,1))
+lines(output$time,output$X8, lwd=3, lty=1, col="#e08214")
+legend("topright", c("BM1","BM2"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214"))
+
+#dev.off()
+
+output[400, ]
+
+```
+
+
+
+#plot results summary
+```{r plot}
+bio<-read.csv("biomass.csv",header=TRUE)
+control<-read.csv("control.csv",header=TRUE)
+library(ggplot2)
+library(reshape)
+
+scaleFUN <- function(x) sprintf("%.1f", x)
+p1<-ggplot(bio, aes(x=Ratio, y=value, group=variable))+ 
+  scale_x_continuous(limits=c(0.5, 2.0))+ 
+  scale_y_continuous(limits=c(0,10), labels=scaleFUN)+ 
+  geom_point(aes(color=variable,shape=variable),size=3)+ 
+  geom_line(aes(color=variable, size=variable),linetype="solid")+ 
+  scale_color_manual(values=c("#8073ac","#8073ac",'#e08214',"#e08214"))+
+  scale_shape_manual(values=c(NA,19,NA,19))+
+  scale_size_manual(values=c(1,0,1,0))+
+  geom_errorbar(aes(ymin=value-err, ymax=value+err), width=.1, position=position_dodge(.0))+
+  
+  theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=14))#co
+pdf("biomass_pred.pdf", width=4.8, height=2.5)
+p1
+dev.off()
+
+flux<-read.csv("flux.csv",header=TRUE)
+new<-reshape2::melt(flux, id=c("Ratio"))
+
+p2<-ggplot(new, aes(x=Ratio, y=value, group=variable))+ 
+  scale_x_continuous(limits=c(0.5, 2.0))+ 
+  scale_y_continuous(limits=c(0,10))+ 
+  geom_point(aes(color=variable,shape=variable),size=3,stroke=1)+ 
+  geom_line(aes(color=variable, size=variable),linetype="solid")+ 
+  scale_color_manual(values=c("#e08214",'#e08214',"#fdb863","#fdb863","#8073ac","#8073ac"))+
+  scale_shape_manual(values=c(19,NA,19,NA,19,NA))+
+  scale_size_manual(values=c(0,1,0,1,0,1))+
+  
+  theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=14))#co
+pdf("flux_pred.pdf", width=5, height=2.5)
+p2
+dev.off()
+
+
+p3<-ggplot(control, aes(x=Resouce, y=value))+geom_bar(aes(fill=type),stat="identity",position=position_dodge())+ scale_x_discrete()+scale_fill_manual(values=c('#b2abd2','#e08214'))+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("cyb_control.pdf", width=4.5, height=3)
+p3
+dev.off()
+
+```
+
+
+##Theroretical analysis based on reaction stoichiometry
+```{r plot}
+
+library(ggplot2)
+library(reshape)
+
+
+x<-seq(0.1,2,0.01)
+DEN<-(2.05/x-1.53)/0.79
+DEN[DEN>1]<-1
+DEN[DEN<0]<-0
+biodata<-data.frame(Ratio=x)
+biodata$Den<-DEN
+biodata$Dnra<-1-DEN
+Bio<-reshape2::melt(biodata, id=c("Ratio"))
+
+scaleFUN <- function(x) sprintf("%.1f", x)
+p1<-ggplot(Bio, aes(x=Ratio, y=value, col=variable))+scale_x_continuous(limits=c(0.3, 2.0))+scale_y_continuous(limits=c(0,1), breaks=c(0,0.5,1))+geom_line(linetype="solid", size=1.4)+scale_color_manual(values=c('#b2abd2','#e08214'))+geom_vline(xintercept=0.88, linetype="dotted")+geom_vline(xintercept=1.34, linetype="dotted")+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=14))#co
+
+pdf("Biomass_stiochio.pdf", width=4.5, height=2.5)
+p1
+dev.off()
+```
+
+
+##Comparison of theoretically derived and measured biomass
+```{r plot}
+bio<-read.csv("biomass_pct.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+
+p1<-ggplot(bio, aes(x=batch, y=value, color=species, fill=species))+geom_bar(position=position_dodge(),stat="identity",size=0.6)+scale_y_continuous(limits=c(0,1), breaks=c(0,0.5,1))+ scale_color_manual(values=c('#b2abd2','#b2abd2','#e08214','#e08214'))+ scale_fill_manual(values=c('white','#b2abd2','white','#e08214'))+ theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=14))#co
+
+pdf("Biomass_theory.pdf", width=5, height=2.5)
+p1
+dev.off()
+
+
+
+
+```
+
+
+##sensitivity analysis on affinity constants
+
+```{r plot}
+
+bio<-read.csv("ka1_sens.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+
+p1<-ggplot()+geom_bar(data=bio[15:28,], aes(x=batch, y=value, fill=variable),position="stack", stat="identity")+scale_y_continuous(limits=c(-1,1), breaks=c(-1,0,1))+ scale_fill_manual(values=c('#8073ac','#fdb863',"black"))+ coord_flip() +theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("Ka1_mid.pdf", width=3.5, height=2.5)
+p1
+dev.off()
+```
+
+```{r plot}
+
+bio<-read.csv("kOC_sens.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+
+p1<-ggplot()+geom_bar(data=bio[1:14,], aes(x=batch, y=value,color=variable, fill=variable),position="stack", stat="identity",size=1)+scale_y_continuous(limits=c(-1,1), breaks=c(-1,0,1))+ scale_color_manual(values=c('#8073ac','#fdb863',"black"))+
+scale_fill_manual(values=c('white','white',"white"))+coord_flip() +theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("KOC_ref.pdf", width=3.5, height=3)#p1
+p1
+dev.off()
+```
+
+
+
+
+
+```{r plot}
+
+bio<-read.csv("Km_ea.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+library(RColorBrewer)
+library(scales)
+
+p1<-ggplot()+geom_bar(data=bio, aes(x=batch, y=value, fill=variable),position="stack", stat="identity")+ scale_y_log10(breaks=c(10^-1,10^1,10^3,10^5), labels=trans_format("log10", math_format(10^.x)))+
+scale_fill_manual(values=c('#8073ac',"white"))+ coord_flip() +theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+#pdf("Km_ea_ref.pdf", width=5, height=3)
+p1
+#dev.off()
+```
