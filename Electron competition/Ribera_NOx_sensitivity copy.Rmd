@@ -1,0 +1,199 @@
+---
+title: "NOx_competition"
+author: "Jianqiu Zheng"
+date: "3/28/2021"
+output: html_document
+---
+
+```{r kin}
+library(FME)
+
+pars<- list (k1=1.3,k2=1.05, k3=0.96)
+#pars[c("vmax1","vmax2","vmax3")]<-Fit$par
+solveNmix <- function(pars, times=seq(0,100, by=0.1)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+        
+      r1<-0.02* Nat/(Nat+0.01) * CHO/(CHO+0.01)
+      r2<-0.02* Nit/(Nit+0.01) * CHO/(CHO+0.01)
+      r3<-0.0084* N2O/(N2O+0.01) * CHO/(CHO+0.01)
+      
+      rsum<-r1+r2+r3
+      #Acetate
+      dNat<- -2.59*r1*r1/rsum
+      dNit<- 2.39*r1*r1/rsum-1.79*r2*r2/rsum
+      dN2O<- 0.8*r2*r2/rsum-1.22*r3*r3/rsum
+      dCHO<- -k1*r1*r1/rsum-k2*r2*r2/rsum-k3*r3*r3/rsum
+     
+     #R1<-r1*r1/rsum/(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum)
+     #R2<-r2*r2/rsum/(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum)
+     #R3<-r3*r3/rsum/(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum)
+
+     
+     R1<-k1*r1*r1/rsum/(k1*r1*r1/rsum+k2*r2*r2/rsum+k3*r3*r3/rsum)  #electron partitioning
+     R2<-k2*r2*r2/rsum/(k1*r1*r1/rsum+k2*r2*r2/rsum+k3*r3*r3/rsum)
+     R3<-k3*r3*r3/rsum/(k1*r1*r1/rsum+k2*r2*r2/rsum+k3*r3*r3/rsum)
+     
+    return(list(c(dNat,dNit, dN2O,dCHO),R1, R2, R3))
+      })
+  }
+times=seq(0,100, by=0.1)
+state<-c(Nat=1.42, Nit=1.42,N2O=0.71, CHO=1.563)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:8])
+}
+
+output<-solveNmix(pars) 
+
+#R<-(0.72-output[51,2])/5 
+
+
+Nat<-(1.42-output[101,2])/10
+Nit<-(1.42-output[101,3])/10
+N2O<-(0.71-output[101,4])/10
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$Nat, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,200), ylim=c(0,2))
+lines(output$time,output$Nit, lwd=3, col="#e08214")
+lines(output$time,output$N2O, lwd=3, col="#fdb863")
+lines(output$time, output$CHO,lwd=3,lty=2, col="#8073ac" )
+lines(output$time, output$G,lwd=3,lty=2, col="black" )
+legend("topright", c("Nat","Nit","N2O","CHO"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+#dev.off()
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$X5, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,200), ylim=c(0,1))
+lines(output$time,output$X6, lwd=3, col="#e08214")
+lines(output$time,output$X7, lwd=3, col="#fdb863")
+legend("topright", c("Ace","Eth","Met"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+
+```
+
+
+
+#global sensitivity analysis of gmax and kd
+```{r sen}
+
+library(FME)
+parRanges <- data.frame(min = c(1.04,0.84,0.768), max = c(1.56,1.26,1.152))
+rownames(parRanges) <- c("k1","k2","k3")
+parRanges
+
+#get sensitivity of vmax
+tout <- 0:100  # run the model for 100 times (num)
+
+print(system.time(sR <- sensRange(func = solveNmix, parms = pars, dist ="grid", sensvar = c("Nat", "Nit","N2O","CHO"), parRange = parRanges[3,], num = 100)))
+
+head(summary(sR))
+
+# plotting the result
+summ.sR <- summary(sR)
+
+pdf("ace_sens_yc3.pdf", width=6, height=6)
+par(mfrow=c(2, 2))
+plot(summ.sR, xlab = "Time (min) ", ylab = "mM", mfrow = NULL,quant = TRUE, col = c("#fdb863","#7f3b08"), legpos = "topright")
+#plot(summ.sR, xlab = "Time (min) ", ylab = "mM", mfrow = NULL,quant = TRUE, col = c("#b2abd2", "#2d004b"), legpos = "topright")
+mtext(outer = TRUE, line = -1, side = 3, "Sensitivity to yc3 ", cex = 1)
+dev.off()
+```
+
+
+# local sensitivity-the effect of a parameter value in a very small region near its nominal value is estimated
+```{r local}
+
+SnsN<- sensFun(func = solveNmix, parms = pars, sensvar = "Nat", varscale = 1)
+head(SnsN)
+plot(SnsN)
+
+summary(SnsN)
+
+# sensitivity analysis can also be performed on several variables
+summary(sensFun(solveNmix, pars, varscale = 1), var = TRUE)
+
+
+#bivarate sensitivity--the pairwise relationships
+cor(SnsN[ ,-(1:2)])
+pairs(SnsN)
+
+```
+
+
+#Function modCRL runs a Monte Carlo simulation, outputting single variables.
+```{r MMC}
+sF <- function (pars) {out <- solveNmix(pars)
+ return(out[nrow(out), 2:4])}
+#what-if scenarios, calculate the final concentration of bacteria and substrate as a function of the k1
+CRL <- modCRL(func = sF, parms = pars, parRange = parRanges[1,])
+plot(CRL)
+
+# how parameter uncertainties propagate
+# what does the data mean?
+CRL2 <- modCRL(func = sF, parms = pars, parMean = c(k1=0.01, k2=0.01),
+ parCovar = matrix(nr = 2, data = c(0.02, 0.02, 0.02,0.05)),
+ dist = "norm", sensvar = "Nit", num = 150)
+pairs(CRL2)
+
+
+#Multivariate sensitivity analysis
+#calculate the collinearity or identifiiability of sets of parameters
+Coll <- collin(SnsN)
+print(Coll)
+Coll [Coll[,"collinearity"] < 20 & Coll[ ,"N"] == 4, ]
+collin(SnsN, parset = 1:2)
+
+```
+
+
+
+#model fitting
+```{r data}
+
+Data<-read.csv("batchG_ace3.csv",header=TRUE)
+#define an objective function that returns the residuals of the model vs the data
+Objective <- function(x, parset = names(x)) {
+ pars[parset] <- x
+ tout <- seq(0, 100, by = 0.05) ## output times
+ out <- solveNmix(pars, tout)
+ return(modCost(obs = Data, model = out))## Model cost
+}
+
+#Fit <- modFit(p = c(vmax1=5, kd1=1,vmax2=2, kd2=0.05),f = Objective, lower = c(0.0, 0.0,0.0,0.0))
+#modFit to locate the minimum, the default is the levenberg-Marquardt algorithm
+
+#parameters are constrained to be >0
+print(system.time(Fit <- modFit(p = c(k1=0.01,k2=0.01),
+ f = Objective, lower = c(0.0001,0.0001))))
+
+summary(Fit)
+
+```
+
+#MCMC analysis
+```{r mcmc}
+SF<-summary(Fit)
+SF
+#initial model error variance (var0)
+SF[]
+
+Var0 <-SF$modVariance
+covIni <-SF$cov.scaled*2.4^2/4 #length of paramerers (p=4)
+MCMC <-modMCMC(p=coef(Fit), f= Objective, jump =covIni, var0 =Var0, wvar0 =1,niter=2000)
+
+#MCMC parameter values per iteration
+plot(MCMC, Full=TRUE)
+#plot both parameters as a function of one another
+pairs(MCMC)
+
+#generate cumulative quantile plot
+MC<-as.mcmc(MCMC$pars)
+cumuplot(MC)
+#covariances based on generated parameters
+
+cov(MCMC$pars)
+
+```

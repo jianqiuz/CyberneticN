@@ -1,0 +1,280 @@
+---
+title: "Ribera_Cmix"
+author: "Jianqiu Zheng"
+date: "3/12/2021"
+output: html_document
+---
+
+##NOx reduction rates in C mix--N2O reduction
+```{r kin}
+library(FME)
+
+pars<- list (vmax1=0.048,vmax2=0.1, vmax3=0.027)
+
+solveMix <- function(pars, times=seq(0,100, by=0.1)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+
+      r1<-vmax1* N2O/(N2O+0.01) * Ace/(Ace+0.01)
+      r2<-vmax2* N2O/(N2O+0.01) * Eth/(Eth+0.01)
+      r3<-vmax3* N2O/(N2O+0.01) * Met/(Met+0.01)
+    
+      rsum<-r1+r2+r3
+
+      dN2O<- -1.22*r1*r1/rsum-1.01*r2*r2/rsum-0.78*r3*r3/rsum
+      dAce<- -0.96*r1*r1/rsum
+      dEth<- -0.60*r2*r2/rsum
+      dMet<- -1.13*r3*r3/rsum
+      dCHO<- -0.96*r1*r1/rsum*2-0.60*r2*r2/rsum*2-1.13*r3*r3/rsum
+      
+      
+      R1<-0.96*r1*r1/rsum/(0.96*r1*r1/rsum+0.60*r2*r2/rsum+1.13*r3*r3/rsum)   #e flow
+      R2<-0.6*r2*r2/rsum/(0.96*r1*r1/rsum+0.60*r2*r2/rsum+1.13*r3*r3/rsum)
+      R3<-1.13*r3*r3/rsum/(0.96*r1*r1/rsum+0.60*r2*r2/rsum+1.13*r3*r3/rsum)
+      
+    return(list(c(dN2O,dAce, dEth,dMet,dCHO),R1, R2, R3))
+      })
+  }
+times=seq(0,100, by=0.1)
+state<-c(N2O=0.70, Ace=0.52, Eth=0.35, Met=0.69, CHO=2.43)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:9])
+}
+
+output<-solveMix(pars) 
+
+R<-(0.70-output[101,2])/10
+
+
+met<-(0.69-output[11,5])
+eth<-(0.35-output[11,4])
+ace<-(0.52-output[11,3])
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$Ace, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,60), ylim=c(0,1))
+lines(output$time,output$Eth, lwd=3, col="#e08214")
+lines(output$time,output$Met, lwd=3, col="#fdb863")
+lines(output$time, output$N2O,lwd=3,lty=2, col="#8073ac" )
+legend("topright", c("Ace","Eth","Met","N2O"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+
+
+#pdf("N2O_cmix.pdf", width=5, height=4.5)
+plot(output$time,output$X6, type = "l",xlab = "Time (min)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,60), ylim=c(0,1))
+lines(output$time,output$X7, lwd=3, col="#e08214")
+lines(output$time,output$X8, lwd=3, col="#fdb863")
+legend("topright", c("Ace","Eth","Met"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+
+#dev.off()
+```
+
+
+##NOx reduction rates in C mix--NO2 and N2O reduction
+```{r kin}
+library(FME)
+
+pars<- list (vmax1=0.02,vmax2=0.016, vmax3=0.01)
+
+solveMix2 <- function(pars, times=seq(0,100, by=0.1)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+
+      r12<-vmax1* NO2/(NO2+0.01) * Ace/(Ace+0.01)
+      r22<-vmax2* NO2/(NO2+0.01) * Eth/(Eth+0.01)
+      r32<-vmax3* NO2/(NO2+0.01) * Met/(Met+0.01)
+    
+      r13<-0.048* N2O/(N2O+0.01) * Ace/(Ace+0.01)
+      r23<-0.1* N2O/(N2O+0.01) * Eth/(Eth+0.01)
+      r33<-0.027* N2O/(N2O+0.01) * Met/(Met+0.01)
+      
+      rsum<-r12+r22+r32+r13+r23+r33
+
+      dNO2<- -1.79*r12*r12/rsum-1.48*r22*r22/rsum-1.11*r32*r32/rsum
+      dN2O<- -1.22*r13*r13/rsum-1.04*r23*r23/rsum-0.78*r33*r33/rsum+ 0.8*r12*r12/rsum+0.64*r22*r22/rsum+0.46*r32*r32/rsum
+      dAce<- -1.05*r12*r12/rsum-0.96*r13*r13/rsum
+      dEth<- -0.65*r22*r22/rsum-0.60*r23*r23/rsum
+      dMet<- -1.17*r32*r32/rsum-1.13*r33*r33/rsum
+
+      
+      RR<-1.05*r12*r12/rsum+0.96*r13*r13/rsum+0.65*r22*r22/rsum+0.60*r23*r23/rsum+1.17*r32*r32/rsum+1.13*r33*r33/rsum
+      R1<-(1.05*r12*r12/rsum+0.96*r13*r13/rsum)/RR
+      R2<-(0.65*r22*r22/rsum+0.60*r23*r23/rsum)/RR
+      R3<-(1.17*r32*r32/rsum+1.13*r33*r33/rsum)/RR
+      
+      #R1<-(r12*r12/rsum+r22*r22/rsum+r32*r32/rsum)/RR
+      #R2<-(r13*r13/rsum+r23*r23/rsum+r33*r33/rsum)/RR
+      #R3<-(r32*r32/rsum+r33*r33/rsum)/RR
+      
+    return(list(c(dNO2,dN2O,dAce, dEth,dMet),R1, R2, R3))
+      })
+  }
+times=seq(0,200, by=0.1)
+state<-c(NO2=1.42, N2O=0, Ace=0.52, Eth=0.35, Met=0.69)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:9])
+}
+
+output<-solveMix2(pars) 
+
+R<-(1.42-output[51,2])/5 
+
+met<-(0.69-output[11,6])
+eth<-(0.35-output[11,5])
+ace<-(0.52-output[11,4])
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$Ace, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#542788", xlim=c(0,200), ylim=c(0,2))
+lines(output$time,output$Eth, lwd=3, col="#8073ac")
+lines(output$time,output$Met, lwd=3, col="#b2abd2")
+lines(output$time, output$NO2,lwd=3,lty=2, col="#e08214" )
+legend("topright", c("Ace","Eth","Met","NO2"),lwd=3, lty=c(1,1,1,2), col=c("#542788","#8073ac","#b2abd2","#e08214"))
+
+#dev.off()
+
+
+pdf("NO2_Cmix.pdf", width=5, height=4.5)
+plot(output$time,output$X6, type = "l",xlab = "Time (min)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(5,200), ylim=c(0,1))
+lines(output$time,output$X7, lwd=3, col="#e08214")
+lines(output$time,output$X8, lwd=3, col="#fdb863")
+legend("right", c("Ace","Eth","Met"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+dev.off()
+
+```
+
+
+##NOx reduction rates in C mix--NO3, NO2 and N2O reduction
+```{r kin}
+library(FME)
+
+pars<- list (vmax1=0.02,vmax2=0.024, vmax3=0.01)
+
+solveMix3 <- function(pars, times=seq(0,100, by=0.1)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+        
+      r11<-vmax1* NO3/(NO3+0.01) * Ace/(Ace+0.01)
+      r21<-vmax2* NO3/(NO3+0.01) * Eth/(Eth+0.01)
+      r31<-vmax3* NO3/(NO3+0.01) * Met/(Met+0.01)
+
+      r12<-0.02* NO2/(NO2+0.01) * Ace/(Ace+0.01)
+      r22<-0.016* NO2/(NO2+0.01) * Eth/(Eth+0.01)
+      r32<-0.01* NO2/(NO2+0.01) * Met/(Met+0.01)
+    
+      r13<-0.048* N2O/(N2O+0.01) * Ace/(Ace+0.01)
+      r23<-0.1* N2O/(N2O+0.01) * Eth/(Eth+0.01)
+      r33<-0.027* N2O/(N2O+0.01) * Met/(Met+0.01)
+      
+      rsum<-r11+r12+r13+r12+r22+r32+r13+r23+r33
+      
+
+      dNO3<--2.59*r11*r11/rsum-2.07*r21*r21/rsum-1.46*r31*r31/rsum
+      
+      dNO2<- -1.79*r12*r12/rsum-1.48*r22*r22/rsum-1.11*r32*r32/rsum+ 2.39*r11*r11/rsum+1.87*r21*r21/rsum+1.26*r31*r31/rsum
+      dN2O<- -1.22*r13*r13/rsum-1.01*r23*r23/rsum-0.78*r33*r33/rsum+ 0.8*r12*r12/rsum+0.64*r22*r22/rsum+0.46*r32*r32/rsum
+      dAce<- -1.3*r11*r11/rsum-1.05*r12*r12/rsum-0.96*r13*r13/rsum
+      dEth<- -0.78*r21*r21/rsum-0.65*r22*r22/rsum-0.60*r23*r23/rsum
+      dMet<- -1.35*r31*r31/rsum-1.17*r32*r32/rsum-1.13*r33*r33/rsum
+
+      
+            
+      RR<-1.3*r11*r11/rsum+1.05*r12*r12/rsum+0.96*r13*r13/rsum+0.78*r21*r21/rsum+0.65*r22*r22/rsum+0.60*r23*r23/rsum+1.35*r31*r31/rsum+1.17*r32*r32/rsum+1.13*r33*r33/rsum
+      #R1<-(r11*r11/rsum+r12*r12/rsum+r13*r13/rsum)/RR
+      #R2<-(r21*r21/rsum+r22*r22/rsum+r23*r23/rsum)/RR
+      #R3<-(r31*r31/rsum+r32*r32/rsum+r33*r33/rsum)/RR
+      
+      R1<-(1.3*r11*r11/rsum+1.05*r12*r12/rsum+0.96*r13*r13/rsum)/RR
+      R2<-(0.78*r21*r21/rsum+0.65*r22*r22/rsum+0.60*r23*r23/rsum)/RR
+      R3<-(1.35*r31*r31/rsum+1.17*r32*r32/rsum+1.13*r33*r33/rsum)/RR
+      
+    return(list(c(dNO3,dNO2,dN2O,dAce, dEth,dMet), R1, R2, R3))
+      })
+  }
+times=seq(0,120, by=0.1)
+state<-c(NO3=1.42,NO2=0, N2O=0, Ace=0.52, Eth=0.35, Met=0.69)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:10])
+}
+
+output<-solveMix3(pars) 
+
+R<-(1.42-output[51,2])/5 
+
+met<-(0.69-output[11,7])
+eth<-(0.35-output[11,6])
+ace<-(0.52-output[11,5])
+
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$Ace, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0.5,100), ylim=c(0,2))
+lines(output$time,output$Eth, lwd=3, col="#e08214")
+lines(output$time,output$Met, lwd=3, col="#fdb863")
+lines(output$time,output$NO3,lwd=3,lty=2, col="#8073ac" )
+legend("topright", c("Ace","Eth","Met","N2O"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+#dev.off()
+
+
+pdf("NO3_Cmix.pdf", width=5, height=4.5)
+plot(output$time,output$X7, type = "l",xlab = "Time (min)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,100), ylim=c(0,1))
+lines(output$time,output$X8, lwd=3, col="#e08214")
+lines(output$time,output$X9, lwd=3, col="#fdb863")
+legend("right", c("Ace","Eth","Met"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+
+
+```
+
+
+#area plot showing contributions of C sources to overall NOx reduction
+```{r area}
+
+library(ggplot2)
+library(reshape2)
+newdf<-data.frame(time=output$time)
+
+newdf$met<-output$Met
+newdf$ace<-output$Ace
+newdf$eth<-output$Eth
+df<-reshape2::melt(newdf, id.var=c("time"))
+
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+p2 <- ggplot() + geom_area(aes(y = value, x = time, fill = variable), data = df,
+                           stat="identity", position = position_stack(reverse = T))+ scale_x_continuous(name = 'Time (min) ',limits = c(0,200))+ 
+scale_y_continuous(name = 'NOx/OC (mM) ',limits = c(0,1.6),labels=scaleFUN)+ scale_fill_manual(values=c("#542788","#8073ac","#d8daeb"))+  geom_line(aes(y=output$N2O, x=output$time),size=1.4, col="#fee0b6",linetype="dashed")+  geom_line(aes(y=output$NO2, x=output$time),size=1.4, col="#e08214",linetype="dashed")+geom_line(aes(y=output$NO3, x=output$time),size=1.4, col="#b35806",linetype="dashed") +theme_linedraw()+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("batch_Cmix_NO3.pdf", width=4.5, height=3)
+p2
+dev.off() 
+
+
+geom_line(aes(y=output$NO3, x=output$time),size=1.4, col="#b35806",linetype="dashed") +
+ geom_line(aes(y=output$NO2, x=output$time),size=1.4, col="#e08214",linetype="dashed")+
+  
+newdff<-data.frame(time=output$time)
+newdff$met<-0.5
+newdff$eth<-0.75
+newdff$ace<-1
+dff<-reshape2::melt(newdff, id.var=c("time"))
+p3 <- ggplot() + geom_line(aes(y = value, x = time, col=variable,linetype=variable, size=variable), data = dff)+ scale_x_continuous(name = 'Time (min) ',limits = c(0,100))+ 
+scale_y_continuous(name = 'NOx/OC (mM) ',limits = c(0,1.5))+ scale_color_manual(values=c("#b35806","#e08214","#542788")) + 
+scale_size_manual(values=c(1.4,1.4,1.4))+ scale_linetype_manual(values=c("dashed","dashed","dashed"))+ theme_linedraw()+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("batch_Nmix_NO3_labels.pdf", width=4.5, height=3)
+p3
+dev.off() 
+geom_line(aes(y=output$CHO, x=output$time),size=1.4, col="#542788",linetype="dashed")
+```
+
+

@@ -1,0 +1,136 @@
+---
+title: "Electron competition during denitrification_Ribera"
+author: "Jianqiu Zheng"
+date: "3/9/2021"
+output: html_document
+---
+###creat ODE function with selected output (select the ones with measurements) for optimization purpose
+# concentrations all in mM, rates in mM per min
+## affinity constant at 10 uM level
+
+```{r kin}
+library(FME)
+
+pars<- list (vmax=0.1)
+
+solveDnra <- function(pars, times=seq(0,100, by=0.05)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+      r1<-vmax* Nat/(Nat+0.01) * CHO/(CHO+0.01)
+      r2<-0.016* Nit/(Nit+0.01) * CHO/(CHO+0.01)
+      r3<-0.1* N2O/(N2O+0.01) * CHO/(CHO+0.01)
+      rsum<-r1+r2+r3
+         #reaction stoichiometry for methanol
+      #dNat<- -1.46*r1*r1/rsum
+      #dNit<- 1.26*r1*r1/rsum-1.11*r2*r2/rsum
+      #dN2O<- 0.46*r2*r2/rsum-0.78*r3*r3/rsum
+      #dCHO<- -1.35*r1*r1/rsum-1.17*r2*r2/rsum-1.13*r3*r3/rsum
+      
+      #reaction stoichiometry for ethanol
+      dNat<- -2.07*r1*r1/rsum
+      dNit<- 1.87*r1*r1/rsum-1.48*r2*r2/rsum
+      dN2O<- 0.64*r2*r2/rsum-1.01*r3*r3/rsum
+      dCHO<- -0.78*r1*r1/rsum-0.65*r2*r2/rsum-0.60*r3*r3/rsum
+     
+       #reaction stoichiometry for acetate
+      #dNat<- -2.59*r1*r1/rsum
+      #dNit<- 2.39*r1*r1/rsum-1.79*r2
+      #dN2O<- 0.8*r2*r2/rsum-1.22*r3*r3/rsum
+      #dCHO<- -1.3*r1*r1/rsum-1.05*r2*r2/rsum-0.96*r3*r3/rsum
+      
+     R1<-r1*r1/rsum/(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum)
+     R2<-r2*r2/rsum/(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum)
+     R3<-r3*r3/rsum/(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum)
+     
+    return(list(c(dNat, dNit,dN2O,dCHO), R1, R2, R3))
+      })
+  }
+times=seq(0,100, by=0.02)
+state<-c(Nat=1.42, Nit=0, N2O=0, CHO=1.042)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:8])
+}
+
+output<-solveDnra(pars)  
+R<-(1.42-output[51,3])
+##plotting
+#pdf("dnra_cyb_lowCN.pdf", width=5, height=4)
+plot(output$time,output$Nat, type = "l",xlab = "Time (min)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,100), ylim=c(0,2))
+lines(output$time,output$Nit, lwd=3, col="#e08214")
+lines(output$time,output$N2O, lwd=3, col="#fdb863")
+legend("topright", c("Nat","Nit","N2O"),lwd=3, lty=c(1,1,1), col=c("#7f3b08","#e08214","#fdb863"))
+
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$X5, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,200), ylim=c(0,1))
+lines(output$time,output$X6, lwd=3, col="#e08214")
+lines(output$time,output$X7, lwd=3, col="#fdb863")
+legend("topright", c("Ace","Eth","Met"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+
+```
+
+##fitting
+
+```{r data}
+
+
+Data<-read.csv("Ribera_ethNO3.csv",header=TRUE)
+
+Objective <- function(x, parset = names(x)) {
+ pars[parset] <- x
+ tout <- seq(0, 100, by = 0.05) ## output times
+ out <- solveDnra(pars, tout)
+ return(modCost(model = out, obs = Data))## Model cost
+}
+
+
+#parameters are constrained to be >0
+print(system.time(Fit <- modFit(p = c(vmax=0.05),
+ f = Objective, lower = c(0.0))))
+
+summary(Fit)
+
+```
+
+
+```{r plot}
+
+pars[c("vmax")]<-Fit$par
+output<-solveDnra(pars)  
+
+mfit<-as.data.frame(output[, 1:5])
+colnames(mfit) <- c("time", "Nat","Nit","N2O","CHO")
+head(mfit)
+
+
+
+pdf("the_N2O.pdf", width=4, height=4)
+plot(Data$time,Data$N2O, xlab = "Time (min)", ylab = "Concentration (mM)", pch=16, cex=1.2,col="#fdb863", xlim=c(0,30), ylim=c(0,2))
+lines(mfit$time, mfit$N2O, lwd=2, col="#fdb863")
+lines(mfit$time, mfit$CHO, lwd=2, lty=2,col="#542788")
+legend("topright", c("N2O","Ethanol"), lwd=2, lty=c(1,2),col=c("#fdb863","#542788"))
+
+dev.off()
+
+
+pdf("eth_Nit.pdf", width=4, height=4)
+plot(Data$time,Data$Nit, xlab = "Time (min)", ylab = "Concentration (mM)", pch=16, cex=1.2,col="#e08214", xlim=c(0,100), ylim=c(0,2))
+lines(mfit$time, mfit$Nit, lwd=2, col="#e08214")
+#points(Data$time, Data$N2O, pch=16, cex=1.2, col="#fdb863")
+lines(mfit$time, mfit$N2O, lwd=2, col="#fdb863")
+#points(Data$time, Data$CHO, pch=5, cex=1.2, col="#542788")
+lines(mfit$time, mfit$CHO, lwd=2, lty=2,col="#542788")
+legend("topright", c("Nitrite","N2O","Ethanol"), lwd=2, lty=c(1,1,2),col=c("#e08214","#fdb863","#542788"))
+
+
+dev.off()
+
+```
+
+
+
+

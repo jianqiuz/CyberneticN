@@ -1,0 +1,321 @@
+---
+title: "Ribera_Nmix"
+author: "Jianqiu Zheng"
+date: "3/12/2021"
+output: html_document
+---
+
+##NOx reduction rates in N mix batches
+```{r kin}
+library(FME)
+
+pars<- list (vmax1=0.012,vmax2=0.01,vmax3=0.007)
+
+solveNmix <- function(pars, times=seq(0,100, by=0.1)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+        
+      r1<-vmax1* Nat/(Nat+0.01) * CHO/(CHO+0.01)
+      r2<-vmax2* Nit/(Nit+0.01) * CHO/(CHO+0.01)
+      r3<-vmax3* N2O/(N2O+0.01) * CHO/(CHO+0.01)
+      
+      rsum<-r1+r2+r3
+      
+    #reaction stoichiometry for methanol
+     dNat<- -1.46*r1*r1/rsum
+     dNit<- 1.26*r1*r1/rsum-1.11*r2*r2/rsum
+     dN2O<- 0.46*r2*r2/rsum-0.78*r3*r3/rsum
+     dCHO<- -1.35*r1*r1/rsum-1.17*r2*r2/rsum-1.13*r3*r3/rsum
+     
+     R1<-1.35*r1*r1/rsum/(1.35*r1*r1/rsum+1.17*r2*r2/rsum+1.13*r3*r3/rsum)
+     R2<-1.17*r2*r2/rsum/(1.35*r1*r1/rsum+1.17*r2*r2/rsum+1.13*r3*r3/rsum)
+     R3<-1.13*r3*r3/rsum/(1.35*r1*r1/rsum+1.17*r2*r2/rsum+1.13*r3*r3/rsum)
+
+    return(list(c(dNat,dNit, dN2O,dCHO),R1, R2, R3))
+      })
+  }
+times=seq(0,100, by=0.1)
+state<-c(Nat=1.42, Nit=1.42,N2O=0.71, CHO=2.083)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:8])
+}
+
+output<-solveNmix(pars) 
+
+#R<-(0.72-output[51,2])/5 
+
+
+Nat<-(1.42-output[101,2])/10
+Nit<-(1.42-output[101,3])/10
+N2O<-(0.71-output[101,4])/10
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$Nat, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,60), ylim=c(0,2))
+lines(output$time,output$Nit, lwd=3, col="#e08214")
+lines(output$time,output$N2O, lwd=3, col="#fdb863")
+lines(output$time, output$CHO,lwd=3,lty=2, col="#8073ac" )
+lines(output$time, output$G,lwd=3,lty=2, col="black" )
+legend("topright", c("Nat","Nit","N2O","CHO"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+#dev.off()
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$X5, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0.50), ylim=c(0,1))
+lines(output$time,output$X6, lwd=3, col="#e08214")
+lines(output$time,output$X7, lwd=3, col="#fdb863")
+legend("topright", c("Ace","Eth","Met"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+
+```
+
+
+
+```{r kin}
+library(FME)
+
+pars<- list (vmax1=0.02,vmax2=0.02,vmax3=0.006)
+#pars[c("vmax1","vmax2","vmax3")]<-Fit$par
+solveNmix <- function(pars, times=seq(0,100, by=0.1)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+        
+      r1<-vmax1* Nat/(Nat+0.01) * CHO/(CHO+0.01)
+      r2<-vmax2* Nit/(Nit+0.01) * CHO/(CHO+0.01)
+      r3<-vmax3* N2O/(N2O+0.01) * CHO/(CHO+0.01)
+      
+      rsum<-r1+r2+r3
+      #Acetate
+      dNat<- -2.59*r1*r1/rsum
+      dNit<- 2.39*r1*r1/rsum-1.79*r2*r2/rsum
+      dN2O<- 0.8*r2*r2/rsum-1.22*r3*r3/rsum
+      dCHO<- -1.3*r1*r1/rsum-1.05*r2*r2/rsum-0.96*r3*r3/rsum
+     
+     #R1<-r1*r1/rsum/(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum)
+     #R2<-r2*r2/rsum/(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum)
+     #R3<-r3*r3/rsum/(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum)
+
+     
+     R1<-1.3*r1*r1/rsum/(1.3*r1*r1/rsum+1.05*r2*r2/rsum+0.96*r3*r3/rsum)
+     R2<-1.05*r2*r2/rsum/(1.3*r1*r1/rsum+1.05*r2*r2/rsum+0.96*r3*r3/rsum)
+     R3<-0.96*r3*r3/rsum/(1.3*r1*r1/rsum+1.05*r2*r2/rsum+0.96*r3*r3/rsum)
+     
+    return(list(c(dNat,dNit, dN2O,dCHO),R1, R2, R3))
+      })
+  }
+times=seq(0,100, by=0.1)
+state<-c(Nat=1.42, Nit=1.42,N2O=0.71, CHO=1.563)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:8])
+}
+
+output<-solveNmix(pars) 
+
+#R<-(0.72-output[51,2])/5 
+
+
+Nat<-(1.42-output[101,2])/10
+Nit<-(1.42-output[101,3])/10
+N2O<-(0.71-output[101,4])/10
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$Nat, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,200), ylim=c(0,2))
+lines(output$time,output$Nit, lwd=3, col="#e08214")
+lines(output$time,output$N2O, lwd=3, col="#fdb863")
+lines(output$time, output$CHO,lwd=3,lty=2, col="#8073ac" )
+lines(output$time, output$G,lwd=3,lty=2, col="black" )
+legend("topright", c("Nat","Nit","N2O","CHO"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+#dev.off()
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$X5, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,200), ylim=c(0,1))
+lines(output$time,output$X6, lwd=3, col="#e08214")
+lines(output$time,output$X7, lwd=3, col="#fdb863")
+legend("topright", c("Ace","Eth","Met"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+
+```
+
+
+```{r kin}
+library(FME)
+
+pars<- list (vmax1=0.008,vmax2=0.0048,vmax3=0.003)
+
+solveNmix <- function(pars, times=seq(0,100, by=0.1)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+        
+      r1<-vmax1* Nat/(Nat+0.01) * CHO/(CHO+0.01)
+      r2<-vmax2* Nit/(Nit+0.01) * CHO/(CHO+0.01)
+      r3<-vmax3* N2O/(N2O+0.01) * CHO/(CHO+0.01)
+      
+      rsum<-r1+r2+r3
+      
+    #ethanol
+     dNat<- -2.07*r1*r1/rsum
+     dNit<- 1.87*r1*r1/rsum-1.48*r2*r2/rsum
+     dN2O<- 0.64*r2*r2/rsum-1.01*r3*r3/rsum
+     dCHO<- -0.78*r1*r1/rsum-0.65*r2*r2/rsum-0.6*r3*r3/rsum
+     R1<-0.78*r1*r1/rsum/(0.78*r1*r1/rsum+0.65*r2*r2/rsum+0.6*r3*r3/rsum)
+     R2<-0.65*r2*r2/rsum/(0.78*r1*r1/rsum+0.65*r2*r2/rsum+0.6*r3*r3/rsum)
+     R3<-0.6*r3*r3/rsum/(0.78*r1*r1/rsum+0.65*r2*r2/rsum+0.6*r3*r3/rsum)
+    return(list(c(dNat,dNit, dN2O,dCHO),R1, R2, R3))
+      })
+  }
+times=seq(0,100, by=0.1)
+state<-c(Nat=1.42, Nit=1.42,N2O=0.72, CHO=1.042)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:8])
+}
+
+output<-solveNmix(pars) 
+
+#R<-(0.72-output[51,2])/5 
+
+
+Nat<-(1.42-output[101,2])/10
+Nit<-(1.42-output[101,3])/10
+N2O<-(0.72-output[101,4])/10
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$Nat, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,60), ylim=c(0,2))
+lines(output$time,output$Nit, lwd=3, col="#e08214")
+lines(output$time,output$N2O, lwd=3, col="#fdb863")
+lines(output$time, output$CHO,lwd=3,lty=2, col="#8073ac" )
+lines(output$time, output$G,lwd=3,lty=2, col="black" )
+legend("topright", c("Nat","Nit","N2O","CHO"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+#dev.off()
+
+#pdf("batchF_ace_ratio.pdf", width=5, height=4.5)
+plot(output$time,output$X5, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,200), ylim=c(0,1))
+lines(output$time,output$X6, lwd=3, col="#e08214")
+lines(output$time,output$X7, lwd=3, col="#fdb863")
+legend("topright", c("Ace","Eth","Met"),lwd=3, lty=c(1,1,1,2), col=c("#7f3b08","#e08214","#fdb863","#8073ac"))
+
+
+```
+
+
+
+```{r data}
+
+
+Data<-read.csv("batchG_met4.csv",header=TRUE)
+
+Objective <- function(x, parset = names(x)) {
+ pars[parset] <- x
+ tout <- seq(0, 100, by = 0.05) ## output times
+ out <- solveNmix(pars, tout)
+ return(modCost(model = out, obs = Data))## Model cost
+}
+
+
+#parameters are constrained to be >0
+print(system.time(Fit <- modFit(p = c(vmax1=0.02,vmax2=0.02,vmax3=0.1),
+ f = Objective, lower = c(0.0,0.0,0.0))))
+
+summary(Fit)
+
+```
+
+
+##rate figure
+```{r barplot}
+
+Data<-read.csv("batch_Nmix.csv",header=TRUE)
+library(ggplot2)
+library(plyr)
+library(reshape2)
+
+ace<-Data[1:6,]
+eth<-Data[7:12,]
+met<-Data[13:18,]
+mix<-Data[19:24,]
+p<-ggplot(met, aes(x=Nsource, y=value, fill=variable)) +
+  geom_bar(stat="identity", color="white", position=position_dodge())+ scale_y_continuous(name="NOx reduction (mM/min)", limits=c(0,0.15))+ scale_fill_manual(values=c('#b2abd2','#e08214'))+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+p
+
+pdf("batch_nmix_met.pdf", width=3.2, height=2.8)
+p
+dev.off()
+#geom_errorbar(aes(ymin=value-stdev, ymax=value-stdev), width=.2,position=position_dodge(.9))+
+
+library(ggpubr)
+library(rstatix)
+Data<-read.csv("batch_all.csv",header=TRUE)
+p2<-ggbarplot(Data, x="Rate", y="value", fill="variable",color="white", facet=c("Csource","Nsource"),position=position_dodge(.75)) +
+scale_y_continuous(name="NOx reduction (mM/min)", limits=c(0,0.11),breaks=c(0,0.05,0.1))+ scale_fill_manual(values=c('#b2abd2','#e08214'))+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=10), strip.background=element_rect(fill="white"))#co
+p2
+
+pdf("batch_all.pdf", width=5, height=5)
+p2
+dev.off()
+```
+
+
+#area plot showing contributions of C sources to overall NOx reduction
+```{r area}
+
+library(ggplot2)
+library(reshape2)
+
+pars[c("vmax1","vmax2","vmax3")]<-Fit$par
+output<-solveNmix(pars) 
+
+
+Nat<-(1.42-output[101,2])/10
+Nit<-(1.42-output[101,3])/10#-(1.42-output[101,2])/10
+N2O<-(0.71-output[101,4])/10#-(1.42-output[101,3])/20
+
+
+newdf<-data.frame(time=output$time)
+newdf$n2o<-output$N2O
+newdf$nit<-output$Nit
+newdf$nat<-output$Nat
+
+df<-reshape2::melt(newdf, id.var=c("time"))
+
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+p2 <- ggplot() + geom_area(aes(y = value, x = time, fill = variable), data = df,
+                           stat="identity", position = position_stack(reverse = T))+ scale_x_continuous(name = 'Time (min) ',limits = c(0,100))+ 
+scale_y_continuous(name = 'NOx/OC (mM) ',limits = c(-0.01,6.01),labels=scaleFUN)+ scale_fill_manual(values=c("#b35806","#fdb863","#fee0b6"))+ geom_line(aes(y=output$CHO, x=output$time),size=1.4, col="#542788",linetype="dashed") + theme_linedraw()+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+
+pdf("batchG_Nmix_ace2.pdf", width=4.5, height=3)
+p2
+dev.off() 
+
+```
+
+
+##eflow
+
+```{r barplot}
+
+Data<-read.csv("eflow.csv",header=TRUE)
+library(ggplot2)
+library(plyr)
+library(reshape2)
+
+p<-ggplot(Data, aes(x=batch, y=value, fill=variable)) +
+  geom_bar(stat="identity", color="white")+ scale_y_continuous(name="e flow", limits=c(0,1))+ scale_fill_manual(values=c('#8073ac','#fdb863',"#d8daeb","white"))+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#co
+p
+
+pdf("batch_EFLOW_new3.pdf", width=7.5, height=3.2)
+p
+dev.off()
+#geom_errorbar(aes(ymin=value-stdev, ymax=value-stdev), width=.2,position=position_dodge(.9))+
+
+
+```
