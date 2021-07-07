@@ -3,6 +3,8 @@
 This repository is archived for manuscript **"The cybernetic approach to modeling dynamic regulation of nitrogen biogeochemical transformations 
 ".** There major modeling components are included: 
 
+
+
 * Dual substrate competition between Denitrification and DNRA
 
 * Electron competition among different denitrification steps
