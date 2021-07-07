@@ -1,0 +1,308 @@
+---
+title: "Coupled nitrification-denitrificaiton"
+author: "Jianqiu Zheng"
+date: "4/16/2021"
+output: html_document
+---
+
+#units uM
+#rate-min-1
+```{r kin}
+library(FME)
+
+#pars<- list (v0=5, v1=2,v2=2,v3=4,v4=3,v5=1)
+pars<- list (v3=0.21,v5=0.16,v6=0.3)
+solveNitr <- function(pars, times=seq(0,100, by=0.05)){
+ derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+      r1<- 0.16 * DOC/(DOC+10) * Oxy/(Oxy+10) #aerobic respiration
+      r2<- 0.38* Amm/(Amm+10) * Oxy/(Oxy+10) # Amm oxidation 
+      r3<- v3* Nit/(Nit+10) * Oxy/(Oxy+10) # Nit oxidation 
+      r4<- 0* Nat/(Nat+10) * DOC/(DOC+1) # Nitrate reduction to nitrite
+      r5<- v5* Nit/(Nit+10) * DOC/(DOC+1)  #denitrification to N2O
+      r6<- v6* N2O/(N2O+10) * DOC/(DOC+1)  #denitrification to N2O
+      rsum<-r1+r2+r3+r4+r5+r6
+      
+      dAmm <-(-7.22*r2*r2/rsum-0.2*r4*r4/rsum)*BM
+      dNat <-(30.91*r3*r3/rsum-0.74*r4*r4/rsum)*BM
+      dNit <-(7.02*r2*r2/rsum-31.11*r3*r3/rsum+0.74*r4*r4/rsum-0.6*r5*r5/rsum)*BM
+      dN2O <- (+0.3*r5*r5/rsum-0.53*r6*r6/rsum)*BM
+      dN2 <- (0.53*r6*r6/rsum)*BM
+      dDOC <- (-1.39*r1*r1/rsum-1.37*r4*r4/rsum-1.30*r5*r5/rsum-1.27*r6*r6/rsum+0.1)*BM
+      dBM<-(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum+r4*r4/rsum+r5*r5/rsum+r6*r6/rsum-0.1)*BM
+      dOxy<- (0.5-0.39*r1*r1/rsum-9.53*r2*r2/rsum-14.6*r3*r3/rsum)*BM #(5-Oxy)*0.02
+
+      
+      R1<-r1/rsum 
+      R2<-r2/rsum
+      R3<-r3/rsum
+      R4<-r4/rsum 
+      R5<-r5/rsum
+      R6<-r6/rsum
+      Rt<-R1+R2+R3
+    return(list(c(dNat,dNit,dAmm,dN2O,dN2,dDOC,dOxy,dBM),R1,R2, R3, Rt, R5,R6))
+      })
+  }
+times=seq(0,150, by=0.1)
+state<-c(Nat=0,Nit=0, Amm=205, N2O=0,N2=0,DOC=0,Oxy=195,BM=2) #in uM
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:15])
+}
+
+output<-solveNitr(pars)  
+```
+
+```{r plot}
+   
+
+plot(output$time,output$Nit, type = "l",xlab = "Time (min)", ylab = "Concentration (nM)", lwd=3,col="#7f3b08", xlim=c(0,100), ylim=c(0,400))
+lines(output$time,output$Amm, lwd=3, lty=1, col="#e08214")
+lines(output$time,output$N2O, lwd=3, lty=1, col="#542788")
+lines(output$time,output$Nat, lwd=3, lty=1, col="black")
+lines(output$time,output$Oxy, lwd=3, lty=3, col="#11d05d")
+legend("topright", c("NO2","NH4","N2","NO3","Oxy"),lwd=3, lty=c(1,1,1,1,3), col=c("#7f3b08","#e08214","#542788","black","#11d05d"))
+
+#pdf("cybernetic_parameters_2.pdf", width=4, height=4)  
+plot(output$time,output$X9, type = "l",xlab = "Time (min)", ylab = "control variables", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,1))
+lines(output$time,output$X10, lwd=3, lty=1, col="#b35806")
+lines(output$time,output$X11, lwd=3, lty=1, col="#fdb863")
+#lines(output$time,output$X12, lwd=3, lty=1, col="#fee0b6")
+lines(output$time,output$X13, lwd=3, lty=1, col="#b2abd2")
+lines(output$time,output$X14, lwd=3, lty=1, col="#8073ac")
+legend("right", c("MMO","AMO","NIO","NIR","N2OR"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac"))
+#dev.off()
+
+plot(output$time,output$N2O, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,10))
+#legend("topright", c("OMM","Ni","NAR","DEN","DNRA","ANMX"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac","red"))
+
+plot(output$time,output$DOC, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,100))
+legend("topright", c("OMM","Ni","NAR","DEN","DNRA","ANMX"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac","red"))
+
+
+
+plot(output$time,output$BM, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,100))
+legend("topright", c("OMM","Ni","NAR","DEN","DNRA","ANMX"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac","red"))
+
+
+```
+
+
+#extract data from simulations
+```{r extra}
+#gas1<-data.frame(time=output$time)
+
+
+gas1$oxy4<-output$Oxy
+gas1$nitrous4<-output$N2O
+gas1$din4<-output$N2
+gas1$unir4<-output$X13
+gas1$uoxy4<-output$X12
+
+
+```
+
+
+###fitting the rates
+```{r data}
+
+Data<-read.csv("oxy_batch1.csv",header=TRUE)
+
+Objective <- function(x, parset = names(x)) {
+ pars[parset] <- x
+ tout <- seq(0, 100, by = 0.05) ## output times
+ out <- solveNitr(pars, tout)
+ return(modCost(model = out, obs = Data))## Model cost
+}
+
+
+#parameters are constrained to be >0
+print(system.time(Fit <- modFit(p = c(v3=0.33,v5=0.14,v6=0.2),
+ f = Objective, lower = c(0.0,0.0,0.0))))
+
+summary(Fit)
+
+```
+
+
+```{r plotting}
+#new<-output[1001,]
+Data1<-read.csv("oxyl1.csv",header=TRUE)
+Data2<-read.csv("oxyl2.csv",header=TRUE)
+Data3<-read.csv("oxyl3.csv",header=TRUE)
+Data4<-read.csv("oxyl4.csv",header=TRUE)
+
+##plotting
+pdf("Oxy_oxy.pdf", width=4, height=4)
+plot(gas1$time,gas1$oxy1, type = "l", xlab = "Time (min)", ylab = "Concentration (uM)", lwd=3,lty=1,col="#fdb863", xlim=c(0,100), ylim=c(0,200),cex.axis=1.2)
+lines(gas1$time,gas1$oxy2, lwd=3, lty=1, col="#e08214")
+lines(gas1$time,gas1$oxy3, lwd=3, lty=1, col="#b35806")
+lines(gas1$time,gas1$oxy4, lwd=3, lty=1, col="#7f3b08")
+
+
+points(Data1$time,Data1$level1, pch=19, col="#fdb863")
+points(Data2$time,Data2$level2, pch=19, col="#e08214")
+points(Data3$time,Data3$level3, pch=19, col="#b35806")
+points(Data4$time,Data4$level4, pch=19, col="#7f3b08")
+
+#legend("topright", c("NH4","NO2","Nat","Oxy"),lwd=3, lty=c(1,1,1,1), col=c("#7f3b08","#e08214","#e08214","#542788"))
+dev.off()
+```
+
+
+
+```{r nitroux}
+
+
+##plotting
+Data1<-read.csv("n2ol1.csv",header=TRUE)
+Data2<-read.csv("n2ol2.csv",header=TRUE)
+Data3<-read.csv("n2ol3.csv",header=TRUE)
+Data4<-read.csv("n2ol4.csv",header=TRUE)
+
+
+pdf("label.pdf", width=4, height=4)
+plot(gas1$time,gas1$nitrous1*1.2, type = "l", xlab = "Time (min)", ylab = "Concentration (uM)", lwd=3,lty=1,col="#fdb863", xlim=c(0,100), ylim=c(0,20),cex.axis=1.2)
+lines(gas1$time,gas1$nitrous2, lwd=3, lty=1, col="#e08214")
+lines(gas1$time,gas1$nitrous3, lwd=3, lty=1, col="#b35806")
+lines(gas1$time,gas1$nitrous4*1.2, lwd=3, lty=1, col="#7f3b08")
+
+
+points(Data1$time,Data1$N2O, pch=19, col="#fdb863")
+points(Data2$time,Data2$N2O, pch=19, col="#e08214")
+points(Data3$time,Data3$N2O, pch=19, col="#b35806")
+points(Data4$time,Data4$N2O, pch=19, col="#7f3b08")
+
+#legend("topright", c("NH4","NO2","Nat","Oxy"),lwd=3, lty=c(1,1,1,1), col=c("#7f3b08","#e08214","#e08214","#542788"))
+dev.off()
+
+plot(gas1$time,gas1$din1, type = "l", main="BatchG4",xlab = "Time (min)", ylab = "Concentration (uM)", lwd=3,lty=1,col="#fdb863", xlim=c(0,100), ylim=c(0,10))
+lines(gas1$time,gas1$din2, lwd=3, lty=1, col="#e08214")
+lines(gas1$time,gas1$din3, lwd=3, lty=1, col="#b35806")
+lines(gas1$time,gas1$din4, lwd=3, lty=1, col="#7f3b08")
+
+
+pdf("Oxy_ui.pdf", width=4, height=4)
+plot(gas1$time,gas1$unir1, type = "l", main="BatchG4",xlab = "Time (min)", ylab = "ui", lwd=3,lty=1,col="#fdb863", xlim=c(0,100), ylim=c(0,1))
+lines(gas1$time,gas1$unir2, lwd=3, lty=1, col="#e08214")
+lines(gas1$time,gas1$unir3, lwd=3, lty=1, col="#b35806")
+lines(gas1$time,gas1$unir4, lwd=3, lty=1, col="#7f3b08")
+
+lines(gas1$time,gas1$uoxy1, lwd=3, lty=1, col="#d8daeb")
+lines(gas1$time,gas1$uoxy2, lwd=3, lty=1, col="#b2abd2")
+lines(gas1$time,gas1$uoxy3, lwd=3, lty=1, col="#8073ac")
+lines(gas1$time,gas1$uoxy4, lwd=3, lty=1, col="#542788")
+dev.off()
+```
+
+
+
+
+```{r plottingBF}
+pars[c("v3","v5","v6")]<-Fit$par
+
+pars<- list (v3=0.21,v5=0.16,v6=0.3)
+output<-solveNitr(pars) 
+
+#new<-output[1001,]
+#data<-rbind(data, new)
+Data<-read.csv("oxy_batch1_all.csv",header=TRUE)
+##plotting
+pdf("Oxy_Amm_optimization_label.pdf", width=4, height=4)
+plot(output$time,output$Amm, type = "l", main="BatchG4",xlab = "Time (min)", ylab = "Concentration (uM)", lwd=3,lty=1,col="#fdb863", xlim=c(0,100), ylim=c(0,250), cex.axis=1.2)
+lines(output$time,output$Nit, lwd=3, lty=1, col="#8073ac")
+points(Data$time,Data$Amm, pch=19, col="#fdb863")
+points(Data$time,Data$Nit, pch=19, col="#8073ac")
+lines(output$time,output$Nat, lwd=3, lty=1, col="#e08214")
+points(Data$time,Data$Nat, pch=19, col="#e08214")
+lines(output$time,output$Oxy, lwd=3, lty=1, col="#542788")
+points(Data$time,Data$Oxy, pch=19, col="#542788")
+#legend("topright", c("NH4","NO2","Nat","Oxy"),lwd=3, lty=c(1,1,1,1), col=c("#fdb863","#8073ac","#e08214","#542788"))
+dev.off()
+
+
+pdf("Oxy_Amm_opt_N2O.pdf", width=4, height=4)
+plot(output$time,output$N2O, type = "l", main="BatchG4",xlab = "Time (min)", ylab = "Concentration (uM)", lwd=3,lty=1,col="#fdb863", xlim=c(0,100), ylim=c(0,10),cex.axis=1.2)
+points(Data$time,Data$N2O, pch=19, col="#fdb863")
+dev.off()
+
+plot(output$time,output$DOC, type = "l", main="BatchG4",xlab = "Time (min)", ylab = "Concentration (uM)", lwd=3,lty=1,col="#fdb863", xlim=c(0,100), ylim=c(0,50))
+```
+
+
+
+
+```{r kin}
+library(FME)
+
+#pars<- list (v0=5, v1=2,v2=2,v3=4,v4=3,v5=1)
+pars<- list ( v2=0.40,v3=0.45)
+solveNitr <- function(pars, times=seq(0,100, by=0.05)){
+ derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+      r1<- 0.16 * DOC/(DOC+10) * Oxy/(Oxy+10) #aerobic respiration
+      r2<- v2* Amm/(Amm+10) * Oxy/(Oxy+10) # Amm oxidation 
+      r3<- v3 * Nit/(Nit+10) * Oxy/(Oxy+10) # Amm oxidation 
+      r4<- 0* Nat/(Nat+10) * DOC/(DOC+10) # Nitrate reduction to nitrite
+      r5<- 0.28* Nit/(Nit+1) #denitrification to N2O
+      r6<- 0.07* N2O/(N2O+1)  #denitrification to N2O
+      rsum<-r1+r2+r3+r4+r5+r6
+      
+      dAmm <-(-7.22*r2*r2/rsum-0.2*r4*r4/rsum)*BM
+      dNat <-(30.91*r3*r3/rsum-0.74*r4*r4/rsum)*BM
+      dNit <-(7.02*r2*r2/rsum-31.11*r3*r3/rsum+0.74*r4*r4/rsum-0.6*r5*r5/rsum)*BM
+      dN2O <- (+0.3*r5*r5/rsum-0.53*r6*r6/rsum)*BM
+      dN2 <- (0.53*r6*r6/rsum)*BM
+      dDOC <- (-1.39*r1*r1/rsum+0.1)*BM
+      dBM<-(r1*r1/rsum+r2*r2/rsum+r3*r3/rsum+r4*r4/rsum+r5*r5/rsum+r6*r6/rsum-0.1)*BM
+      dOxy<- (0.5-0.39*r1*r1/rsum-9.53*r2*r2/rsum-14.6*r3*r3/rsum)*BM #(5-Oxy)*0.02
+
+      
+      R1<-r1/rsum 
+      R2<-r2/rsum
+      R3<-r3/rsum
+      R4<-r4/rsum 
+      R5<-r5/rsum
+      R6<-r6/rsum
+    return(list(c(dNat,dNit,dAmm,dN2O,dN2,dDOC,dOxy,dBM),R1,R2, R3, R4, R5,R6))
+      })
+  }
+times=seq(0,100, by=0.1)
+state<-c(Nat=0,Nit=0, Amm=335, N2O=0,N2=0,DOC=0,Oxy=195,BM=2) #in uM
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:15])
+}
+
+output<-solveNitr(pars)  
+
+   
+
+plot(output$time,output$Nit, type = "l",xlab = "Time (min)", ylab = "Concentration (nM)", lwd=3,col="#7f3b08", xlim=c(0,100), ylim=c(0,400))
+lines(output$time,output$Amm, lwd=3, lty=1, col="#e08214")
+lines(output$time,output$N2O, lwd=3, lty=1, col="#542788")
+lines(output$time,output$Nat, lwd=3, lty=1, col="black")
+lines(output$time,output$Oxy, lwd=3, lty=3, col="#11d05d")
+legend("topright", c("NO2","NH4","N2","NO3","Oxy"),lwd=3, lty=c(1,1,1,1,3), col=c("#7f3b08","#e08214","#542788","black","#11d05d"))
+
+  
+plot(output$time,output$X9, type = "l",xlab = "Time (min)", ylab = "control variables", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,1))
+lines(output$time,output$X10, lwd=3, lty=1, col="#b35806")
+lines(output$time,output$X11, lwd=3, lty=1, col="#fdb863")
+lines(output$time,output$X12, lwd=3, lty=1, col="#fee0b6")
+lines(output$time,output$X13, lwd=3, lty=1, col="#b2abd2")
+lines(output$time,output$X14, lwd=3, lty=1, col="#8073ac")
+legend("topright", c("OMM","AmmO","NiO","NAR","NIR","N2OR"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac"))
+
+
+plot(output$time,output$N2O, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,10))
+#legend("topright", c("OMM","Ni","NAR","DEN","DNRA","ANMX"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac","red"))
+
+plot(output$time,output$DOC, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,30))
+#legend("topright", c("OMM","Ni","NAR","DEN","DNRA","ANMX"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac","red"))
+
+```
+
+
