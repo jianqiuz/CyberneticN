@@ -1,0 +1,295 @@
+---
+title: "cybernetic N"
+author: "Jianqiu Zheng"
+date: "4/1/2021"
+output: html_document
+---
+
+
+##Full model
+```{r kin}
+library(FME)
+
+#pars<- list (v0=5, v1=2,v2=2,v3=4,v4=3,v5=1)
+pars<- list (v0=1,v1=1,v2=1,v3=1,v4=1,v5=1, v6=1)
+solveDnra <- function(pars, times=seq(0,100, by=0.1)){
+ derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+      r0<- v0 * CHO/(CHO+500) * Oxy/(Oxy+10)
+      r6<- v6 * DOC/(DOC+10) * Oxy/(Oxy+10) #respiration
+      r1<- v1 * Amm/(Amm+10) * Oxy/(Oxy+10) # Amm oxidation by BM1
+      r2<- v2 * Nat/(Nat+10) * DOC/(DOC+1) # Nitrate reduction to nitrite
+      r3<- v3 * Nit/(Nit+10) * DOC/(DOC+1)  #denitrification
+      r4<- v4 * Nit/(Nit+1) * DOC/(DOC+10)  #DNRA
+      r5<- v5 * Nit/(Nit+10) * Amm/(Amm+100)  #Anammox
+      rsum<-r0+r1+r2+r3+r4+r5+r6
+      
+      dAmm <-((100-Amm)*0.02-4.75*r1*r1/rsum-0.20*r2*r2/rsum-0.20*r3*r3/rsum+0.39*r4*r4/rsum-6.26*r5*r5/rsum+1/5.88*r0*r0/rsum)*BM
+      dNat <-((100-Nat)*0.02-4.55*r1*r1/rsum-0.74*r2*r2/rsum)*BM
+      dNit <-((0-Nit)*0.02+0.74*r2*r2/rsum-0.40*r3*r3/rsum-0.59*r4*r4/rsum-4.73*r5*r5/rsum)*BM
+      dN2 <- (0.20*r3*r3/rsum+5.39*r5*r5/rsum)*BM
+      dDOC <- ((1000-DOC)*0.02-1.37*r2*r2/rsum-1.00*r3*r3/rsum-1.88*r4*r4/rsum+r0*r0/rsum+0.1-1.39*r6*r6/rsum)*BM
+      dBM<-((0-BM)*0.02+r1*r1/rsum+r2*r2/rsum+r3*r3/rsum+r4*r4/rsum+r5*r5/rsum+r6*r6/rsum-0.1)*BM
+      dOxy<- ((0-Oxy)*0.02-r0*r0/rsum-8.09*r1*r1/rsum-0.39*r6*r6/rsum)*BM 
+      dCHO<--r0*r0/rsum*BM 
+      Ntot<-Amm+Nat+Nit+2*N2
+      R6<-r6/rsum #respiration
+      R1<-r1/rsum #Nitrification
+      R2<-r2/rsum #NO3 reduction
+      R3<-r3/rsum #NO3 removal via DEN
+      R4<-r4/rsum #NO3 removal via DNRA
+      R5<-r5/rsum#NO3 removal via Ana
+      R0<-r0/rsum
+    return(list(c(dNat,dNit,dAmm,dN2,dCHO,dDOC,dOxy,dBM),R6,R1,R2, R3, R4, R5, R0))
+      })
+  }
+times=seq(0,100, by=0.1)
+state<-c(Nat=5,Nit=0, Amm=1, N2=0,CHO=200,DOC=20,Oxy=5,BM=2)##uM
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:16])
+}
+
+output<-solveDnra(pars)  
+
+   
+
+plot(output$time,output$Nit, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,100), ylim=c(0,100))
+lines(output$time,output$Amm, lwd=3, lty=1, col="#e08214")
+lines(output$time,output$N2, lwd=3, lty=1, col="#542788")
+lines(output$time,output$Nat, lwd=3, lty=1, col="black")
+lines(output$time,output$DOC, lwd=3, lty=3, col="#11d05d")
+legend("topright", c("NO2","NH4","N2","NO3","DOC"),lwd=3, lty=c(1,1,1,1,3), col=c("#7f3b08","#e08214","#542788","black","#11d05d"))
+
+  
+plot(output$time,output$X14, type = "l",xlab = "Time (d)", ylab = "control variables", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,1))
+lines(output$time,output$X9, lwd=3, lty=1, col="#b35806")
+lines(output$time,output$X10, lwd=3, lty=1, col="#fdb863")
+lines(output$time,output$X11, lwd=3, lty=1, col="#fee0b6")
+lines(output$time,output$X12, lwd=3, lty=1, col="#b2abd2")
+lines(output$time,output$X13, lwd=3, lty=1, col="#8073ac")
+legend("topright", c("OMM","Ni","NAR","DEN","DNRA","ANMX"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac"))
+
+
+plot(output$time,output$BM, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,30))
+legend("topright", c("Biomass"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac"))
+
+
+```
+
+
+
+###Amm as N source for nitrate and nitrite reduction during denitrification
+```{r kin}
+library(FME)
+
+#pars<- list (v0=5, v1=2,v2=2,v3=4,v4=3,v5=1)
+pars<- list (v0=1,v1=1,v2=1,v3=1,v4=1,v5=1,v6=1,v7=1)
+solveDnra <- function(pars, times=seq(0,50, by=0.05)){
+ derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+      r0<- v0 * CHO/(CHO+500) * Oxy/(Oxy+10)
+      r1<- v1 * Amm/(Amm+10) * Oxy/(Oxy+10) # Amm oxidation by BM1
+      r2<- v2 * Nat/(Nat+10) * DOC/(DOC+1) # Nitrate reduction to nitrite
+      r3<- v3 * Nit/(Nit+10) * DOC/(DOC+1)  #denitrification
+      r4<- v4 * Nit/(Nit+1) * DOC/(DOC+10)  #DNRA
+      r5<- v5 * Nit/(Nit+100) * Amm/(Amm+100)  #Anammox
+      
+      r6<- v6 * Nat/(Nat+10) * DOC/(DOC+1) # Nitrate reduction to nitrite
+      r7<- v7 * Nit/(Nit+10) * DOC/(DOC+1)  #denitrification
+      rsum<-r0+r1+r2+r3+r4+r5+r6+r7
+      
+      dAmm <-((2-Amm)*0.02-4.75*r1*r1/rsum-0.20*r6*r6/rsum-0.20*r7*r7/rsum+0.39*r4*r4/rsum-6.26*r5*r5/rsum+1/5.88*r0*r0/rsum)*BM
+      dNat <-((2-Nat)*0.02-4.55*r1*r1/rsum-1.24*r2*r2/rsum-0.74*r6*r6/rsum)*BM
+      dNit <-((0-Nit)*0.02+1.04*r2*r2/rsum-0.72*r3*r3/rsum+0.74*r6*r6/rsum-0.40*r7*r7/rsum-0.59*r4*r4/rsum-4.73*r5*r5/rsum)*BM
+      dN2 <- (0.26*r3*r3/rsum+0.20*r7*r7/rsum+5.39*r5*r5/rsum)*BM
+      dDOC <- ((10-DOC)*0.02-1.92*r2*r2/rsum-1.30*r3*r3/rsum-1.37*r6*r6/rsum-1.00*r7*r7/rsum-1.88*r4*r4/rsum+r0*r0/rsum)*BM
+      dBM<-((0-BM)*0.02+r1*r1/rsum+r2*r2/rsum+r3*r3/rsum+r4*r4/rsum+r5*r5/rsum+r6*r6/rsum+r7*r7/rsum-0.1)*BM
+      dOxy<- ((10-Oxy)*0.02-r0*r0/rsum-8.09*r1*r1/rsum)*BM 
+      dCHO<--r0*r0/rsum*BM 
+      Ntot<-Amm+Nat+Nit+2*N2
+      R1<-r1/rsum #Nitrification
+      R2<-r2/rsum+r6/rsum #NO3 reduction
+      R3<-r3/rsum+r7/rsum #NO3 removal via DEN
+      R4<-r4/rsum #NO3 removal via DNRA
+      R5<-r5/rsum#NO3 removal via Ana
+      R0<-r0/rsum
+    return(list(c(dNat,dNit,dAmm,dN2,dCHO,dDOC,dOxy,dBM),R1,R2, R3, R4, R5, R0))
+      })
+  }
+times=seq(0,100, by=0.05)
+state<-c(Nat=5,Nit=0, Amm=1, N2=0,CHO=200,DOC=20,Oxy=1,BM=2)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:15])
+}
+
+output<-solveDnra(pars)  
+
+   
+
+plot(output$time,output$Nit, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,100), ylim=c(0,50))
+lines(output$time,output$Amm, lwd=3, lty=1, col="#e08214")
+lines(output$time,output$N2, lwd=3, lty=1, col="#542788")
+lines(output$time,output$Nat, lwd=3, lty=1, col="black")
+lines(output$time,output$DOC, lwd=3, lty=3, col="#11d05d")
+legend("topright", c("NO2","NH4","N2","NO3","CHO"),lwd=3, lty=c(1,1,1,1,3), col=c("#7f3b08","#e08214","#542788","black","#11d05d"))
+
+  
+plot(output$time,output$X14, type = "l",xlab = "Time (d)", ylab = "control variables", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,1))
+lines(output$time,output$X9, lwd=3, lty=1, col="#b35806")
+lines(output$time,output$X10, lwd=3, lty=1, col="#fdb863")
+lines(output$time,output$X11, lwd=3, lty=1, col="#fee0b6")
+lines(output$time,output$X12, lwd=3, lty=1, col="#b2abd2")
+lines(output$time,output$X13, lwd=3, lty=1, col="#8073ac")
+legend("topright", c("OMM","Ni","NAR","DEN","DNRA","ANMX"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac"))
+
+
+plot(output$time,output$BM, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#2d004b", xlim=c(0,100), ylim=c(0,10))
+legend("topright", c("OMM","Ni","NAR","DEN","DNRA","ANMX"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2","#8073ac"))
+
+
+output[10001,]
+```
+
+
+
+
+
+#global sensitivity analysis of gmax and kd
+```{r sen}
+
+library(FME)
+parRanges <- data.frame(min = c(0.1,0.1,0.1,0.1,0.1), max = c(1,1,1,1,1))
+rownames(parRanges) <- c("v1","v2","v3","v4","v5")
+parRanges
+
+#get sensitivity of vmax
+tout <- 0:100  # run the model for 100 times (num)
+
+print(system.time(sR <- sensRange(func = solveDnra, parms = pars, dist ="grid", sensvar = c("Nat","Amm"), parRange = parRanges[5,], num = 100)))
+
+head(summary(sR))
+
+# plotting the result
+summ.sR <- summary(sR)
+pdf("Full10-20Amm-Nat_v5.pdf", width=6, height=6)
+par(mfrow=c(2, 2))
+#plot(summ.sR, xlab = "Time (h)", ylab = "mM",legpos = "topright", mfrow = NULL)
+plot(summ.sR, xlab = "Time (d)", ylab = "mM", mfrow = NULL,quant = TRUE,  ylim=range(0,15),col = c("#d8daeb", "#542788"), legpos = FALSE)
+mtext(outer = TRUE, line = 0.5, side = 3, "Sensitivity to Km_OC2 (0.01-1mM)", cex = 1.25)
+par(mfrow = c(1, 1))
+dev.off()
+# senstivity analysis of both parameters
+#Sens2 <- summary(sensRange(func = solveDnra, parms = pars, dist = "latin", sensvar = "Nat", parRange = parRanges, num = 100))
+#"#fee0b6", "#b35806"
+#plot(Sens2, main = "Sensitivity of vamx and kd", xlab = "time, hour",ylab = "mM")
+#d8daeb
+#542788
+```
+
+
+
+```{r plot}
+
+control<-read.csv("growth_3do.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+library(RColorBrewer)
+library(scales)
+library(ggalt)
+
+coul<-brewer.pal(4,"PuOr")
+coul<-colorRampPalette(coul)(12)
+pie(rep(1,length(coul)), col=coul, main="")
+
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+
+p1<-ggplot(control, aes(x=ratio, y=bm,color=series))+geom_point(size=2, shape=21, stroke=1)+geom_line(size=1,se = FALSE)+
+  scale_y_continuous()+
+  scale_x_log10(breaks=c(10^-2,10^-1,10^0,10^1), labels=trans_format("log10", math_format(10^.x)))+ 
+  #geom_smooth(aes(fill=series),alpha=0.2)+
+scale_color_manual(values=c('#7f3b08','#b35806','#e08214','#c5bad7','#7661a6','#542788','#2d004b'))+ theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#+theme(axis.text.x=element_text(angle =45, vjust = 0.5))
+
+pdf("growth_6DO.pdf", width=4.5, height=3)#p1
+p1
+dev.off()
+```
+
+
+
+```{r plot}
+
+control<-read.csv("N2_6do.csv",header=TRUE)
+
+
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+
+p1<-ggplot(control, aes(x=ratio, y=N2,color=series))+geom_point(size=2, shape=21, stroke=1)+geom_line(size=1,se = FALSE)+
+  scale_y_log10(breaks=c(10^0,10^1,10^2, 10^3), labels=trans_format("log10", math_format(10^.x)))+
+  scale_x_log10(breaks=c(10^-2,10^-1,10^0,10^1), labels=trans_format("log10", math_format(10^.x)))+ 
+  #geom_smooth(aes(fill=series),alpha=0.2)+
+scale_color_manual(values=c('#7f3b08','#b35806','#e08214','#c5bad7','#7661a6','#542788','#2d004b'))+ theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#+theme(axis.text.x=element_text(angle =45, vjust = 0.5))
+
+pdf("N2_6DO.pdf", width=4.5, height=3)#p1
+p1
+dev.off()
+```
+
+
+```{r plot}
+
+control<-read.csv("Amm_Nloss2.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+library(RColorBrewer)
+library(scales)
+coul<-brewer.pal(4,"PuOr")
+coul<-colorRampPalette(coul)(12)
+pie(rep(1,length(coul)), col=coul, main="")
+
+scaleFUN <- function(x) sprintf("%.2f", x)
+p1<-ggplot(control, aes(x=ratio, y=bm,color=batch))+geom_point(aes(shape=batch, fill=batch),size=2,stroke=1)+geom_line(aes(linetype=batch),size=1,,se = FALSE)+
+  scale_y_continuous(limits=c(0,0.6),labels=scaleFUN)+
+  scale_x_log10(breaks=c(10^-1,10^0,10^1), labels=trans_format("log10", math_format(10^.x)),limits=c(0.02,20))+
+  scale_color_manual(values=c('#e08214','#e08214'))+ 
+  scale_shape_manual(values=c(21,1))+
+  scale_fill_manual(values=c('#e08214','#e08214'))+
+  scale_linetype_manual(values=c('solid','dashed'))+ 
+  theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))#+theme(axis.text.x=element_text(angle =45, vjust = 0.5))
+#pdf("NlossAmm1.pdf", width=4, height=2.5)#p1
+p1
+#dev.off()
+```
+
+
+
+```{r plot}
+
+control<-read.csv("Partition_new.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+library(RColorBrewer)
+
+
+#nb.cols <- 15
+#mycolors <- colorRampPalette(brewer.pal(11, "PuOr"))(nb.cols)
+
+
+p1<-ggplot(control, aes(x=batch, y=value,fill=process, color=process))+geom_bar(position="fill", stat="identity",size=0.08)+ #geom_smooth(aes(fill=series),alpha=0.2)+
+scale_fill_manual(values=c('#7f3b08','#b35806','#fdb863','#fee0b6','#d8daeb','#b2abd2','#8073ac','#2d004b'))+
+scale_color_manual(values=c('white','white','white','white','white','white','white','white'))+
+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=14))#+theme(axis.text.x=element_text(angle =45, vjust = 0.5))
+
+pdf("DO_partition.pdf", width=4.5, height=3)#p1
+p1
+dev.off()
+```
+

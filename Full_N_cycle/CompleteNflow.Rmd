@@ -1,0 +1,378 @@
+---
+title: "CompleteN_hardison"
+author: "Jianqiu Zheng"
+date: "3/29/2021"
+output: html_document
+---
+
+
+
+#solving nitrification and denitrification in -C treatment (dCHO=0)
+```{r kin}
+library(FME)
+
+pars<- list (vmax1=5.84,vmax2=9.26,vmax3=2.99)
+
+solveDnra <- function(pars, times=seq(0,50, by=0.05)){
+ derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+      r0<-2
+      #r0<- 0.45 * CHO   #for +C
+      r1<- vmax1* Amm/(Amm+10) # Amm oxidation by BM1
+      r2<- vmax2 * Nat/(Nat+10) * DOC/(DOC+10) # Nitrate reduction to nitrite
+      r3<- vmax3 * Nit/(Nit+10) * DOC/(DOC+10)  #denitrification
+      r4<- 0* Nit/(Nit+10) * DOC/(DOC+10)  #DNRA
+      r5<- 0* Nit/(Nit+10) * Amm/(Amm+10)  #Anammox
+      rsum<-r0+r1+r2+r3+r4+r5
+      
+      dAmm <-(20-Amm)*0.035-4.75*r1*r1/rsum+1/5.88*r0+0.39*r4*r4/rsum-6.26*r5*r5/rsum
+      dNat <-(226-Nat)*0.035+4.55*r1*r1/rsum-1.24*r2*r2/rsum
+      dNit <-(0-Nit)*0.035+1.04*r2*r2/rsum-0.72*r3*r3/rsum-0.59*r4*r4/rsum-4.73*r5*r5/rsum
+      dN2 <- 0.26*r3*r3/rsum+5.39*r5*r5/rsum
+      dDOC <- -1.92*r2*r2/rsum-1.30*r3*r3/rsum+(0-DOC)*0.035+r0-1.88*r4*r4/rsum+1*9.6*r0
+      dCHO <-0-r0
+      R1<-r1/rsum #NO3 regeneration
+      R2<-r2/rsum #NO3 reduction
+      R3<-r3/rsum #NO3 removal via DEN
+      R4<-r4/rsum #NO3 removal via DNRA
+      R5<-r5/rsum #NO3 removal via Ana
+      R0<-r0/rsum
+    return(list(c(dNat,dNit,dAmm,dN2, dCHO, dDOC),R1,R2, R3, R4, R5,R0))
+      })
+  }
+times=seq(0,50, by=0.05)
+state<-c(Nat=5,Nit=0.67, Amm=3, N2=0, CHO=150,DOC=20)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:13])
+}
+
+output<-solveDnra(pars)  
+
+   
+
+plot(output$time,output$Nit, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,50), ylim=c(0,50))
+lines(output$time,output$Amm, lwd=3, lty=1, col="#e08214")
+lines(output$time,output$N2, lwd=3, lty=1, col="#542788")
+lines(output$time,output$Nat, lwd=3, lty=1, col="black")
+lines(output$time,output$DOC, lwd=3, lty=3, col="#11d05d")
+legend("topright", c("NO2","NH4","N2","NO3","CHO"),lwd=3, lty=c(1,1,1,1,3), col=c("#7f3b08","#e08214","#542788","black","#11d05d"))
+
+  
+pdf("controlv_lChN.pdf", width=6, height=4)
+par(xpd = T, mar = par()$mar + c(0,0,0,10))  
+plot(output$time,output$X12, type = "l",xlab = "Time (d)", ylab = "control variable", lwd=3,col="#2d004b", xlim=c(0,50), ylim=c(0,1))
+lines(output$time,output$X7, lwd=3, lty=1, col="#b35806")
+lines(output$time,output$X8, lwd=3, lty=1, col="#fdb863")
+lines(output$time,output$X9, lwd=3, lty=1, col="#fee0b6")
+lines(output$time,output$X10, lwd=3, lty=1, col="#b2abd2")
+legend("topright",inset = c(- 0.6, 0), c("Omm","Nit","NAR","Deni","Dnra"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2"))
+dev.off()
+
+
+```
+
+```{r data}
+
+
+Data<-read.csv("lowC_highN.csv",header=TRUE)
+
+Objective <- function(x, parset = names(x)) {
+ pars[parset] <- x
+ tout <- seq(0, 40, by = 0.05) ## output times
+ out <- solveDnra(pars, tout)
+ return(modCost(model = out, obs = Data))## Model cost
+}
+
+
+#parameters are constrained to be >0
+print(system.time(Fit <- modFit(p = c(vmax1=3,vmax2=10,vmax3=10),
+ f = Objective, lower = c(0.0,0.0,0.0))))
+
+summary(Fit)
+
+```
+
+
+```{r plot}
+
+pars[c("vmax1","vmax2","vmax3")]<-Fit$par
+#pars<- list (vmax1=1,vmax2=46,vmax3=69)
+output<-solveDnra(pars)  
+
+mfit<-as.data.frame(output[, 1:4])
+colnames(mfit) <- c("time", "Nat","Nit","Amm")
+head(mfit)
+
+
+solveDen<- function(pars, times=seq(0,30, by=0.05)){
+  
+  derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+      dNat <-(226-Nat)/22
+    return(list(c(dNat)))
+      })
+  }
+times=seq(0,50, by=0.05)
+state<-c(Nat=5)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+data.frame(ox[,1:2])
+}
+
+theory<-solveDen(pars)  
+
+
+pdf("lowC_highN.pdf", width=6, height=4)
+par(xpd = T, mar = par()$mar + c(0,0,0,10))
+plot(Data$time,Data$Nat, xlab = "Time (d)", ylab = "Concentration (uM)", pch=16, cex=1.2,col="#e08214", xlim=c(0,50), ylim=c(0,150),cex.lab=1.2, cex.axis=1.2)
+lines(mfit$time, mfit$Nat, lwd=2, col="#e08214")
+points(Data$time, Data$Nit, pch=16, cex=1.2, col="#8073ac")
+lines(mfit$time, mfit$Nit, lwd=2, col="#8073ac")
+#lines(theory$time, theory$Nat, lwd=2, lty=3, col="#e08214")
+points(Data$time, Data$Amm, pch=16, cex=1.2, col="#fdb863")
+lines(mfit$time, mfit$Amm, lwd=2, col="#fdb863")
+legend("topright",inset = c(- 0.6, 0), c("NO3","NO2","Inflow"), lwd=2, lty=c(1,3),col=c("#e08214","#e08214","#e08214"))
+
+dev.off()
+
+```
+
+
+
+
+
+
+#solving nitrification and denitrification in +C treatment (dCHO=0)
+```{r kin}
+library(FME)
+
+pars<- list (vmax1=2.99,vmax2=53.48,vmax4=66.33)
+
+solveDnra <- function(pars, times=seq(0,50, by=0.05)){
+ derivs <- function(t, state, pars){
+      with(as.list(c(state, pars)),{
+      #r0<-0
+      r0<- 0.45 * CHO   #for +C
+      r1<-vmax1* Amm/(Amm+10) # Amm oxidation by BM1
+      r2<- vmax2* Nat/(Nat+10) * DOC/(DOC+10) # Nitrate reduction to nitrite
+      r3<- vmax3* Nit/(Nit+10) * DOC/(DOC+10)   #denitrification
+      r4<- vmax4* Nit/(Nit+10) * DOC/(DOC+10)  #DNRA
+      rsum<-r0+r1+r2+r3+r4
+      
+      dAmm <-(20-Amm)*0.035-4.75*r1*r1/rsum+1/5.88*r0+2+0.39*r4*r4/rsum
+      dNat <-(31-Nat)*0.035+4.55*r1*r1/rsum-1.24*r2*r2/rsum
+      dNit <-(0-Nit)*0.035+1.04*r2*r2/rsum-0.72*r3*r3/rsum-0.59*r4*r4/rsum
+      dN2 <- 0.26*r3*r3/rsum
+      dDOC <- -1.92*r2*r2/rsum-1.30*r3*r3/rsum+2*9.6*r0+(0-DOC)*0.035-1.88*r4*r4/rsum
+      dCHO <-0-r0
+        
+      R1<-r1/rsum #NO3 regeneration
+      R2<-r2/rsum 
+      R3<-r3/rsum #NO3 removal via DEN
+      R4<-r4/rsum #NO3 removal via DNRA
+      R0<-r0/rsum
+    return(list(c(dNat,dNit,dAmm,dN2, dCHO, dDOC),R1,R2, R3, R4,R0))
+      })
+  }
+times=seq(0,50, by=0.05)
+state<-c(Nat=4,Nit=0, Amm=0, N2=0, CHO=150,DOC=20)
+#solved the mode
+  ox<-ode(y=state, times=times, func=derivs, parms=pars)
+
+data.frame(ox[,1:12])
+}
+
+output<-solveDnra(pars)  
+
+   
+
+plot(output$time,output$Nit, type = "l",xlab = "Time (h)", ylab = "Concentration (mM)", lwd=3,col="#7f3b08", xlim=c(0,50), ylim=c(0,100))
+lines(output$time,output$Amm, lwd=3, lty=1, col="#e08214")
+lines(output$time,output$N2, lwd=3, lty=1, col="#542788")
+lines(output$time,output$Nat, lwd=3, lty=1, col="black")
+lines(output$time,output$DOC, lwd=3, lty=3, col="#11d05d")
+legend("topright", c("NO2","NH4","N2","NO3","CHO"),lwd=3, lty=c(1,1,1,1,3), col=c("#7f3b08","#e08214","#542788","black","#11d05d"))
+
+
+#pdf("controlv.pdf", width=6, height=4)
+par(xpd = T, mar = par()$mar + c(0,0,0,10))  
+plot(output$time,output$X11, type = "l",xlab = "Time (d)", ylab = "control variable", lwd=3,col="#2d004b", xlim=c(0,50), ylim=c(0,1))
+lines(output$time,output$X7, lwd=3, lty=1, col="#b35806")
+lines(output$time,output$X8, lwd=3, lty=1, col="#fdb863")
+lines(output$time,output$X9, lwd=3, lty=1, col="#fee0b6")
+lines(output$time,output$X10, lwd=3, lty=1, col="#b2abd2")
+legend("topright",inset = c(- 0.6, 0), c("Omm","Nit","NAR","Deni","Dnra"),lwd=3, lty=c(1,1,1,1,1,1), col=c("#2d004b","#b35806","#fdb863","#fee0b6","#b2abd2"))
+#dev.off()
+
+```
+
+
+##
+```{r data}
+
+
+Data<-read.csv("highC_lowN.csv",header=TRUE)
+
+Objective <- function(x, parset = names(x)) {
+ pars[parset] <- x
+ tout <- seq(0, 40, by = 0.05) ## output times
+ out <- solveDnra(pars, tout)
+ return(modCost(model = out, obs = Data))## Model cost
+}
+
+
+#parameters are constrained to be >0
+print(system.time(Fit <- modFit(p = c(vmax1=2,vmax2=40,vmax4=10),
+ f = Objective, lower = c(0.0,0.0,0.0))))
+
+summary(Fit)
+
+```
+
+```{r plot}
+
+pars[c("vmax1","vmax2","vmax3","vmax4")]<-Fit$par
+pars<- list (vmax1=2.99,vmax2=53.48,vmax3=22.55,vmax4=66.33)
+output<-solveDnra(pars)  
+
+mfit<-as.data.frame(output[, 1:4])
+colnames(mfit) <- c("time", "Nat","Nit","Amm")
+head(mfit)
+
+
+#pdf("highC_highN.pdf", width=6, height=4)
+par(xpd = T, mar = par()$mar + c(0,0,0,10))
+plot(Data$time,Data$Nat, xlab = "Time (d)", ylab = "Concentration (uM)", pch=16, cex=1.2,col="#e08214", xlim=c(0,50), ylim=c(0,80),cex.lab=1.2, cex.axis=1.2)
+lines(mfit$time, mfit$Nat, lwd=2, col="#e08214")
+points(Data$time, Data$Nit, pch=16, cex=1.2, col="#8073ac")
+lines(mfit$time, mfit$Nit, lwd=2, col="#8073ac")
+#lines(theory$time, theory$Nat, lwd=2, lty=2, col="#e08214")
+points(Data$time, Data$Amm, pch=16, cex=1.2, col="#fdb863")
+lines(mfit$time, mfit$Amm, lwd=2, col="#fdb863")
+legend("topright",inset = c(- 0.6, 0), c("NO3","NO2","Inflow"), lwd=2, lty=c(1,1,2),col=c("#e08214","#8073ac","#e08214"))
+
+#dev.off()
+
+
+
+#pdf("labels2.pdf", width=6, height=4)
+par(xpd = T, mar = par()$mar + c(0,0,0,10))
+plot(Data$time,Data$Nat, xlab = "Time (d)", ylab = "Concentration (uM)", pch=16, cex=1.2,col="#e08214", xlim=c(0,50), ylim=c(0,80),cex.lab=1.2, cex.axis=1.2)
+lines(mfit$time, mfit$Nat, lwd=2, col="#e08214")
+points(Data$time, Data$Nit, pch=16, cex=1.2, col="#8073ac")
+lines(mfit$time, mfit$Nit, lwd=2, col="#8073ac")
+#lines(theory$time, theory$Nat, lwd=2, lty=2, col="#e08214")
+points(Data$time, Data$Amm, pch=16, cex=1.2, col="#fdb863")
+lines(mfit$time, mfit$Amm, lwd=2, col="#fdb863")
+legend("topright",inset = c(- 0.6, 0), c("NO3","NO2","Inflow"), lwd=2, lty=c(1,1,1),col=c("#e08214","#8073ac","#fdb863"))
+
+#dev.off()
+
+
+```
+
+
+
+
+```{r plot}
+
+control<-read.csv("control.csv",header=TRUE)
+
+library(ggplot2)
+library(reshape)
+
+p1<-ggplot(control[1:20,], aes(x=treatment, y=value,fill=Rate))+geom_bar(position="fill", stat="identity",size=1)+ 
+scale_fill_manual(values=c('#fdb863','#fee0b6','#d8daeb','#b2abd2',"#8073ac"))+theme_linedraw()+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+theme(text = element_text(size=16))+theme(axis.text.x=element_text(angle =45, vjust = 0.5))
+
+pdf("control_obv.pdf", width=4, height=3)#p1
+p1
+dev.off()
+```
+
+
+
+#global sensitivity analysis of gmax and kd
+```{r sen}
+
+library(FME)
+parRanges <- data.frame(min = c(1,1,1,1), max = c(100,100,100,100))
+rownames(parRanges) <- c("k1","k2","k3","k4")
+parRanges
+
+#get sensitivity of vmax
+tout <- 0:100  # run the model for 100 times (num)
+
+print(system.time(sR <- sensRange(func = solveDnra, parms = pars, dist ="grid", sensvar = c("N2"), parRange = parRanges[3,], num = 100)))
+
+head(summary(sR))
+
+# plotting the result
+summ.sR <- summary(sR)
+pdf("k3.pdf", width=6, height=6)
+par(mfrow=c(2, 2))
+#plot(summ.sR, xlab = "Time (h)", ylab = "mM",legpos = "topright", mfrow = NULL)
+plot(summ.sR, xlab = "Time (d)", ylab = "mM", mfrow = NULL,quant = TRUE, ylim=range(0,15),col = c("#d8daeb", "#542788"), legpos = FALSE)
+mtext(outer = TRUE, line = 0.5, side = 3, "Sensitivity to Km_OC2 (0.01-1mM)", cex = 1.25)
+par(mfrow = c(1, 1))
+dev.off()
+# senstivity analysis of both parameters
+#Sens2 <- summary(sensRange(func = solveDnra, parms = pars, dist = "latin", sensvar = "Nat", parRange = parRanges, num = 100))
+#d8daeb
+#542788
+#plot(Sens2, main = "Sensitivity of vamx and kd", xlab = "time, hour",ylab = "mM")
+
+```
+
+
+
+# local sensitivity-the effect of a parameter value in a very small region near its nominal value is estimated
+```{r local}
+pars[c("vmax1","vmax2","vmax3","vmax4")]<-Fit$par
+
+SnsNR<- sensFun(func = solveDnra(), parms = pars, sensvar = "Nat", varscale = 1)
+head(SnsNR)
+plot(SnsNR)
+
+summary(SnsNR)
+
+# sensitivity analysis can also be performed on several variables
+summary(sensFun(solveNR, pars, varscale = 1), var = TRUE)
+
+
+#bivarate sensitivity--the pairwise relationships
+cor(SnsNRt[ ,-(1:2)])
+pairs(SnsNR)
+
+```
+#Function modCRL runs a Monte Carlo simulation, outputting single variables.
+```{r MMC}
+
+pars[c("vmax1","vmax2")]<-Fit$par
+
+sF <- function (pars) {out <- solveNR(pars)
+ return(out[nrow(out), 2:4])}
+#what-if scenarios, calculate the final concentration of bacteria and substrate as a function of the maximal growth rate
+CRL <- modCRL(func = sF, parms = pars, parRange = parRanges[1,])
+plot(CRL)
+
+# how parameter uncertainties propagate
+# what does the data mean?
+CRL2 <- modCRL(func = sF, parms = pars, parMean = c(vmax2=2, kd2=1),
+ parCovar = matrix(nr = 2, data = c(0.02, 0.02, 0.02, 0.05)),
+ dist = "norm", sensvar = "Nit", num = 150)
+pairs(CRL2)
+
+
+#Multivariate sensitivity analysis
+#calculate the collinearity or identifiiability of sets of parameters
+Coll <- collin(SnsBact)
+print(Coll)
+Coll [Coll[,"collinearity"] < 20 & Coll[ ,"N"] == 4, ]
+collin(SnsBact, parset = 1:2)
+
+```
+
+
+
