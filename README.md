@@ -15,6 +15,7 @@ This repository is archived for manuscript **"The cybernetic approach to modelin
 
 
 **The complexity of nitrogen cycle**
+
 <img width="475" alt="Figure N cycle diagram" src="https://user-images.githubusercontent.com/16612176/124702199-db4a1400-dea4-11eb-815b-1b6aa31bd199.png">
 
 
