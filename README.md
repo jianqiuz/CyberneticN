@@ -15,7 +15,8 @@ This repository is archived for manuscript **"The cybernetic approach to modelin
 
 
 **The complexity of nitrogen cycle**
-![AquaMEND](https://user-images.githubusercontent.com/16612176/98896388-ae507900-245d-11eb-9cc5-151464f2354f.png)
+<img width="475" alt="Figure N cycle diagram" src="https://user-images.githubusercontent.com/16612176/124702199-db4a1400-dea4-11eb-815b-1b6aa31bd199.png">
+
 
 
 In each folder, there's an R markdown file detailing model setup, optimization and plot generation. All associated datasets are included.
