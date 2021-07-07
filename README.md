@@ -11,3 +11,6 @@ This repository is archived for manuscript **"The cybernetic approach to modelin
 * Coupled nitrification-denitrification dynamics
 
 * A full model of N transformations, including OM mineralization (releasing Ammonium), aerobic respiration, nitrification, denitrification, DNRA and Anammox
+
+
+In each folder, there's an R markdown file detailing model setup, optimization and plot generation. All associated datasets are included.
