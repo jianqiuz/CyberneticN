@@ -1,4 +1,4 @@
-# cyberneticN
+# CyberneticN
 
 This repository is archived for manuscript **"The cybernetic approach to modeling dynamic regulation of nitrogen biogeochemical transformations 
 ".** Nitrogen  (N) cycling in the environment is driven by complex networks of microorganisms and enzymatic processes. Competitive and cooperative relationships are often observed among various nitrogen transforming pathways, creating substantial challenges for the development of dynamic models. Here we address this need using a cybernetic approach that captures dynamic interplay among nitrogen transformation reactions without prescribing the nature of these interactions. 
